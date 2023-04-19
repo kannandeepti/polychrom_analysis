@@ -30,9 +30,11 @@ Deepti Kannan. 2022
 
 import numpy as np
 from cooltools.lib import numutils
-from cooltools.lib.numutils import (LazyToeplitz,
-                                    iterative_correction_symmetric,
-                                    observed_over_expected)
+from cooltools.lib.numutils import (
+    LazyToeplitz,
+    iterative_correction_symmetric,
+    observed_over_expected,
+)
 
 
 def process_data(filename, score_quantile=25, n_groups=38):
@@ -158,11 +160,18 @@ def saddle_strength_A_B(S, C):
 
     Returns
     -------
-    Astrength : 1d array
+    AA_oe : 1d array
+        Observed over expected (interaction corner AA) with increasing extent.
+    BB_oe : 1d array
+        Observed over expected (interaction corner BB) with increasing extent.
+    AB_oe : 1d array
+        Observed over expected (interaction corner AB) with increasing extent.
+    AA_ratios : 1d array
         Ratios of cumulative corner interaction scores (AA/AB) with increasing extent.
-    Bstrength : 1d array
+    BB_ratios : 1d array
         Ratios of cumulative corner interaction scores (BB/AB) with increasing extent
-
+    ratios : 1d array
+        (AA + BB - AB - BA) / (AA + BB + AB + BA)
     """
     m, n = S.shape
     if m != n:

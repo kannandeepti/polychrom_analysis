@@ -2,11 +2,13 @@ r"""
 Polymer simulations with ActiveBrownianIntegrator
 -------------------------------------------------
 
-This is a sample python script to run a polychrom simulation with the `ActiveBrownianIntegrator' custom integrator in
-polychrom.contrib.integrators. This integrator is used to simulate a polymer where each mononmer has a different
+Python script used to run polychrom simulation with the `ActiveBrownianIntegrator` custom integrator in
+contrib.integrators. This integrator is used to simulate a polymer where each mononmer has a different
 effective temperature and thus a different diffusion coefficient :math:`D_i = k_B T_i / \xi`. Here, we consider an
-example where there are just two types of monomers, active (A) and inactive (B), where :math:`D_A > D_B` and the user
-chooses the ratio :math:`D_A / D_B`.
+the case where there are just two types of monomers, active (A) and inactive (B),
+where :math:`D_A > D_B` and the user
+chooses the ratio :math:`D_A / D_B`. A/B identities are derived from the Hi-C data in Zhang et
+al. (2021). All other parameters are hard-coded and match Goychuk et al. (2023).
 
 Run this script using
 >>> python activeBD.py [gpuid] [activity_ratio]

@@ -2,7 +2,7 @@ r"""
 Polymer simulations with CorrelatedNoiseIntegrator
 --------------------------------------------------
 
-This is a sample python script to run a polychrom simulation with the `CorrelatedNoiseIntegrator' custom integrator
+This is a python script to run a polychrom simulation with the `CorrelatedNoiseIntegrator' custom integrator
 in polychrom.contrib.integrators. This integrator is used to simulate a polymer where the Brownian forces acting on
 distinct monomers could be correlated in direction. In addition, as in `ActiveBrownianIntegrator`, each monomer can
 have a different diffusion coefficient :math:`D_i = k_B T_i / \xi`.
@@ -17,6 +17,8 @@ Here, we consider a simple example with just 1 feature (say, "charge"), and set 
 be the same. Thus, all same-charge monomers will be correlated with correlation coefficient 0.5 and opposing charge
 monomers are anticorrelated with coefficient -0.5. To visualize the Pearson correlation matrix of the N-dimensional
 Gaussian noise that drives the polymer, use the `compute_Pearson_correlation_matrix()` function.
+
+All parameters are hard-coded and match Goychuk et al. (2023).
 
 Run this script using
 >>> python corr_noise.py [gpuid]
