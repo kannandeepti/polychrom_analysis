@@ -1,8 +1,7 @@
 #!/bin/bash
 # Create a clean conda environment and run the following commands.
-# conda create -n polychrom
+# conda create -n polychrom python=3.9
 # conda activate polychrom
-conda install python=3.9
 conda install  -c conda-forge openmm
 python -m openmm.testInstallation
 conda install -c conda-forge openmmtools
