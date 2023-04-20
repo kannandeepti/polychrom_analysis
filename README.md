@@ -1,6 +1,11 @@
 # Analysis of polychrom simulations
 
 This folder contains scripts to interface with the open2c/polychrom simulation software package. To use these scripts, first create a clean conda environment and install openMM and other dependencies using the install.sh script.
+```
+conda create -n polychrom python=3.9
+conda activate polychrom
+bash install.sh
+```
 
 The `contrib` folder contains custom Brownian dynamics integrators for polymers driven by active 
 forces that vary in magnitude and can potentially be correlated. The `examples` folder contains 
