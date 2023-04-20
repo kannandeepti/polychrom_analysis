@@ -1,6 +1,6 @@
 # Analysis of polychrom simulations
 
-This folder contains scripts to interface with the open2c/polychrom simulation software package in order to run the simulations in [^1]. To use these scripts, first create a clean conda environment and install openMM and other dependencies using the install.sh script.
+This folder contains scripts to interface with the open2c/polychrom simulation software package in order to run the simulations in[^1]. To use these scripts, first create a clean conda environment and install openMM and other dependencies using the install.sh script.
 ```
 conda create -n polychrom python=3.9
 conda activate polychrom
