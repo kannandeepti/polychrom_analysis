@@ -11,15 +11,21 @@ correlation. Functions to compute all of these are available here.
 Deepti Kannan. 2022
 """
 
-
+from tqdm import tqdm
 import itertools
+from itertools import combinations
 import multiprocessing as mp
 from functools import partial
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import polychrom
+import sys
+try:
+    import polychrom
+except:
+    sys.path.append("/home/dkannan/git-remotes/polychrom/")
+    import polychrom
 from polychrom import contactmaps
 from polychrom.hdf5_format import list_URIs, load_URI
 from scipy.spatial.distance import pdist, squareform
@@ -83,8 +89,8 @@ def extract_conformations(basepath, ncores=24, chain=True, **kwargs):
     else:
         return confs, runs
 
-
-def mean_squared_separation(conformations, savepath, simstring, N=1000):
+def mean_squared_separation(conformations, savepath, simstring, rsquared=False,
+                            metric="sqeuclidean", N=1000):
     """Compute mean squared separation between all pairs of monomers averaged over all
     conformations. Saves N x N matrix to csv file. Also saves mean squared distance
     from each monomer to the origin to csv file.
@@ -103,21 +109,33 @@ def mean_squared_separation(conformations, savepath, simstring, N=1000):
     """
     # mean squared separation between all pairs of monomers
     msd = np.zeros((N, N))
+    #mean radius of gyration of subchains
+    Rg2 = 0.0
     # mean squared separation between each monomer and origin
-    rsquared = np.zeros((N,))
+    if rsquared:
+        rsquared = np.zeros((N,))
+    num_confs = 0
     for conformation in conformations:
         pos = load_URI(conformation)["pos"]
-        rsquared += np.sum(pos**2, axis=1)
-        dist = pdist(pos, metric="sqeuclidean")
-        Y = squareform(dist)
-        msd += Y
-    msd /= len(conformations)
-    rsquared /= len(conformations)
+        ncopies = pos.shape[0] // N
+        for i in range(ncopies):
+            posN = pos[N*i : N*(i+1)]
+            if rsquared:
+                rsquared += np.sum(posN**2, axis=1)
+            Rg2 += np.mean((posN - np.mean(posN, axis=0)) ** 2) * 3
+            dist = pdist(posN, metric=metric)
+            Y = squareform(dist)
+            msd += Y
+        num_confs += ncopies
+    msd /= num_confs
+    Rg2 /= num_confs
+    if rsquared:
+        rsquared /= num_confs
+        df2 = pd.DataFrame(rsquared)
+        df2.to_csv(Path(savepath) / f"rsquared_{simstring}.csv", index=False)
     df = pd.DataFrame(msd)
-    df.to_csv(Path(savepath) / f"mean_squared_separation_{simstring}.csv", index=False)
-    df2 = pd.DataFrame(rsquared)
-    df2.to_csv(Path(savepath) / f"rsquared_{simstring}.csv", index=False)
-
+    df.to_csv(Path(savepath) / f"mean_{metric}_distance_{simstring}.csv", index=False)
+    return Rg2
 
 def contour_alignment(savepath, simstring):
     """Calculate contour alignment :math:`\langle (r_{i+1} - r_i) \cdot (r_{j+1}-r_{j}) \rangle`
@@ -229,3 +247,4 @@ def process_existing_simulations(simdir=None, savepath=Path("data")):
             mat2 = mat / len(conformations)
             # save cutoff radius = 2.0 contact map
             np.save(f"data/contact_map_{simstrings[i]}_cutoff2.0.npy", mat2)
+
