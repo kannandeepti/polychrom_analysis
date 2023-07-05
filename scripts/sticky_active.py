@@ -1,8 +1,7 @@
 """
-Script to run equilibrium simulations of polymer with B-B attractive interactions
+Script to run hybrid simulations with active forces and sticky B-B attractions 
 
-A/B identities inferred from Hi-C data in Zhang, ..., Blobel (2021), from a portion
-of chromosome 2.
+A/B identities inferred from q-arm of chr 2 in chromatin tracing data of Su et al. (2020).
 
 Deepti Kannan, 2023
 """
@@ -28,7 +27,7 @@ N=len(ids)
 #1 is B, 0 is A
 flipped_ids = (1 - ids).astype(bool)
 
-def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, timestep=170, nblocks=20000, blocksize=1000):
+def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, timestep=170, nblocks=40000, blocksize=2000):
     """Run a single simulation on a GPU of a hetero-polymer with A monomers and B monomers. A monomers
     have a larger diffusion coefficient than B monomers, with an activity ratio of D_A / D_B.
 
@@ -58,9 +57,10 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, timestep=1
     particle_inds = np.arange(0, N*ncopies, dtype="int")
     sticky_inds = particle_inds[np.tile(flipped_ids, ncopies)]
     D = np.ones((N, 3))
-    Ddiff = (activity_ratio - 1) / (activity_ratio + 1)
-    D[ids==0, :] = 1.0 - Ddiff
-    D[ids==1, :] = 1.0 + Ddiff
+    if activity_ratio != 1:
+        Ddiff = (activity_ratio - 1) / (activity_ratio + 1)
+        D[ids==0, :] = 1.0 - Ddiff
+        D[ids==1, :] = 1.0 + Ddiff
     #vertically stack ncopies of this array
     D = np.tile(D, (ncopies, 1)) #shape (N*ncopies, 3)
     # monomer density in confinement in units of monomers/volume (25%)
@@ -132,11 +132,7 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, timestep=1
 
 if __name__ == '__main__':
     gpuid = int(sys.argv[1])
-    for E0 in [0.05, 0.06]:
-        for act_ratio in [3, 4, 5, 6, 7]:
-            run_sticky_sim(gpuid, 0, N, 20, E0, act_ratio)
-
-    for E0 in [0.02, 0.03, 0.04]:
-        for act_ratio in [6, 7]:
+    for E0 in [1.5, 1.75, 2.0]:
+        for act_ratio in [1, 3, 5, 7, 10, 20]: 
             run_sticky_sim(gpuid, 0, N, 20, E0, act_ratio)
 
