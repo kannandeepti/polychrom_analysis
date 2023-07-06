@@ -8,13 +8,10 @@ Deepti Kannan, 2023
 import time
 import numpy as np
 import os, sys
-try:
-    import polychrom
-except:
-    sys.path.append("/home/dkannan/git-remotes/polychrom/")
-    import polychrom
+sys.path.append(os.getcwd())
+import polychrom
 from polychrom import forcekits, forces, simulation, starting_conformations
-from polychrom.contrib.integrators import ActiveBrownianIntegrator
+from contrib.integrators import ActiveBrownianIntegrator
 from polychrom.hdf5_format import HDF5Reporter
 import openmm
 from simtk import unit
@@ -132,7 +129,7 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, timestep=1
 
 if __name__ == '__main__':
     gpuid = int(sys.argv[1])
-    for E0 in [1.5, 1.75, 2.0]:
-        for act_ratio in [1, 3, 5, 7, 10, 20]: 
+    for act_ratio in [1]: 
+        for E0 in [0.03, 0.06, 0.08, 0.09]:
             run_sticky_sim(gpuid, 0, N, 20, E0, act_ratio)
 
