@@ -18,7 +18,54 @@ from pathlib import Path
 
 basepath = Path("/net/levsha/share/deepti/simulations")
 
-def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1, inactive_loc="center", timestep=170, nblocks=40000, blocksize=2000):
+def initialize_inactive_center(density=0.477, mapN=1000, ncopies=17):
+    """ Initialize ncopies random walks within a spherical confinement. The first chain
+    is initialized within an inner sphere centered at the origin, while all remaining chains
+    perform a random walk between the inner sphere and outer sphere.
+    
+    Parameters
+    ----------
+    density : float
+        monomer density within confinement
+    mapN : int
+        number of monomers per subchain
+    ncopies : int
+        number of subchains
+    
+    """
+    
+    r_inactive = (3 * mapN / (4 * 3.141592 * density)) ** (1/3)
+    r_confinement = (3 * mapN * ncopies / (4 * 3.141592 * density)) ** (1/3)
+    print(r_inactive)
+    print(r_confinement)
+    def confine_inactive(pos):
+        x, y, z = pos
+        #reject position if it's more than 5% outside of the spherical radius
+        return ((np.sqrt(x**2 + y**2 + z**2) - r_inactive) <= 0.05*r_inactive)
+    
+    def confine_active(pos):
+        x, y, z = pos
+        outside_inner_sphere = (0.95*r_C <= np.sqrt(x**2 + y**2 + z**2))
+        inside_outer_sphere = ((np.sqrt(x**2 + y**2 + z**2) - r_confinement) <= 0.05*r_confinement)
+        return (inside_outer_sphere and outside_inner_sphere)
+    
+    inactive_pos = create_constrained_random_walk(mapN, confine_inactive, starting_point=(0., 0., 0.))
+    #choose a random starting point within the two spheres.
+    theta = np.random.uniform(0.0, 1.0)
+    theta = 2.0 * np.pi * theta
+    u = np.random.uniform(0.0, 1.0)
+    u = 2.0 * u - 1.0
+    r = np.random.uniform(0.0, 1.0)
+    r = (r_inactive + (r_confinement - r_inactive)*r**(1/3))
+    x = r * np.sqrt(1.0 - u*u) * np.cos(theta)
+    y = r * np.sqrt(1.0 - u*u) * np.sin(theta)
+    z = r * u
+    active_pos = create_constrained_random_walk((ncopies - 1)*mapN, confine_active, 
+                                                starting_point=(x, y, z))
+    return np.concatenate((inactive_pos, active_pos))
+
+def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1, 
+            inactive_loc="center", timestep=170, nblocks=20000, blocksize=2000):
     """Run a single simulation on a GPU of a collection of `nhot` active homopolymers and `ncold` inactive
     homopolymers of length N onomers in a spherical confinement.
 
@@ -53,12 +100,7 @@ def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1, inactive_loc="c
         Dcold[:, :] = 1.0 - Ddiff
         Dhot[:, :] = 1.0 + Ddiff
     #vertically stack ncopies of this array
-    if inactive_loc == "end":
-        D = np.concatenate((np.tile(Dhot, (nhot, 1)), np.tile(Dcold, (ncold, 1))), axis=0) #shape (N*ncopies, 3)
-    elif inactive_loc == "center":
-        D = np.concatenate((np.tile(Dhot, (int(nhot/2), 1)), np.tile(Dcold, (ncold, 1)), np.tile(Dhot, (int(nhot/2), 1))), axis=0) #shape (N*ncopies, 3)
-    else:
-        raise ValueError("inactive chromosome either on end or center")
+    D = np.concatenate((np.tile(Dcold, (ncold, 1)), np.tile(Dhot, (nhot, 1))), axis=0) #shape (N*ncopies, 3)
     assert(D.shape[0] == (nhot + ncold)*N and D.shape[1] == 3)
     # monomer density in confinement in units of monomers/volume (25%)
     density = 0.477
@@ -90,8 +132,11 @@ def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1, inactive_loc="c
         PBCbox=False,
         reporters=[reporter],
     )
-
-    polymer = starting_conformations.grow_cubic(N*ncopies, 2 * int(np.ceil(r)))
+    
+    if inactive_loc == "center":
+        polymer = initialize_inactive_center(density, N, ncopies)
+    else:
+        polymer = starting_conformations.grow_cubic(N*ncopies, 2 * int(np.ceil(r)))
     sim.set_data(polymer, center=True)  # loads a polymer, puts a center of mass at zero
     sim.set_velocities(v=np.zeros((N*ncopies, 3)))  # initializes velocities of all monomers to zero (no inertia)
     sim.add_force(forces.spherical_confinement(sim, density=density, k=5.0))
