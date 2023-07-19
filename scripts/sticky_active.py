@@ -75,7 +75,7 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, timestep=1
     particleD = unit.Quantity(D, kT / friction)
     integrator = ActiveBrownianIntegrator(timestep, collision_rate, particleD)
     gpuid = f"{gpuid}"
-    traj = basepath/f"stickyBB_{E0}_act{activity_ratio}/runs{nblocks}_{blocksize}_{ncopies}copies"
+    traj = basepath/f"stickyBB_{E0}_act{activity_ratio}_attr0.05/runs{nblocks}_{blocksize}_{ncopies}copies"
     Path(traj).mkdir(parents=True, exist_ok=True)
     reporter = HDF5Reporter(folder=traj, max_data_length=100, overwrite=True)
     sim = simulation.Simulation(
@@ -98,7 +98,7 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, timestep=1
                                        sticky_inds, 
                                        extraHardParticlesIdxs=[], #don't make any particles extra hard
                                        repulsionEnergy=3.0, #base repulsion energy for all particles (same as polynomial_repulsive)
-                                       attractionEnergy=0.0, #base attraction energy for all particles
+                                       attractionEnergy=0.05, #base attraction energy for all particles
                                        selectiveAttractionEnergy=E0)
     sim.add_force(f_sticky)
     sim.add_force(forces.spherical_confinement(sim, density=density, k=5.0))
@@ -129,7 +129,7 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, timestep=1
 
 if __name__ == '__main__':
     gpuid = int(sys.argv[1])
-    for act_ratio in [1]: 
-        for E0 in [0.03, 0.06, 0.08, 0.09]:
+    for act_ratio in [3, 5, 7, 10, 20]: 
+        for E0 in [0.0]:
             run_sticky_sim(gpuid, 0, N, 20, E0, act_ratio)
 

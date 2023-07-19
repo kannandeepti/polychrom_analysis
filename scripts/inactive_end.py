@@ -18,7 +18,7 @@ from pathlib import Path
 
 basepath = Path("/net/levsha/share/deepti/simulations")
 
-def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1, timestep=170, nblocks=40000, blocksize=2000):
+def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1, inactive_loc="center", timestep=170, nblocks=40000, blocksize=2000):
     """Run a single simulation on a GPU of a collection of `nhot` active homopolymers and `ncold` inactive
     homopolymers of length N onomers in a spherical confinement.
 
@@ -53,7 +53,12 @@ def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1, timestep=170, n
         Dcold[:, :] = 1.0 - Ddiff
         Dhot[:, :] = 1.0 + Ddiff
     #vertically stack ncopies of this array
-    D = np.concatenate((np.tile(Dhot, (nhot, 1)), np.tile(Dcold, (ncold, 1))), axis=0) #shape (N*ncopies, 3)
+    if inactive_loc == "end":
+        D = np.concatenate((np.tile(Dhot, (nhot, 1)), np.tile(Dcold, (ncold, 1))), axis=0) #shape (N*ncopies, 3)
+    elif inactive_loc == "center":
+        D = np.concatenate((np.tile(Dhot, (int(nhot/2), 1)), np.tile(Dcold, (ncold, 1)), np.tile(Dhot, (int(nhot/2), 1))), axis=0) #shape (N*ncopies, 3)
+    else:
+        raise ValueError("inactive chromosome either on end or center")
     assert(D.shape[0] == (nhot + ncold)*N and D.shape[1] == 3)
     # monomer density in confinement in units of monomers/volume (25%)
     density = 0.477
@@ -70,7 +75,7 @@ def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1, timestep=170, n
     particleD = unit.Quantity(D, kT / friction)
     integrator = ActiveBrownianIntegrator(timestep, collision_rate, particleD)
     gpuid = f"{gpuid}"
-    traj = basepath/f"active{nhot}_inactive{ncold}_act{activity_ratio}/run{run_number}"
+    traj = basepath/f"active{nhot}_inactive{ncold}_act{activity_ratio}_center/run{run_number}"
     Path(traj).mkdir(parents=True, exist_ok=True)
     reporter = HDF5Reporter(folder=traj, max_data_length=100, overwrite=True)
     sim = simulation.Simulation(
@@ -121,6 +126,6 @@ def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1, timestep=170, n
 if __name__ == '__main__':
     gpuid = int(sys.argv[1])
     #16 active chromosomes, 1 inactive chromosomes, each with 1000 monomers
-    for i in range(20):
-        run_sim(gpuid, i, 1000, 16, 7.0)
+    for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]:
+        run_sim(gpuid, i, 1000, 16, 19.0)
 
