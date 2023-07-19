@@ -48,7 +48,10 @@ def extract(path, start=100000, every_other=10000, end=200000):
     """
     try:
         confs = list_URIs(path)
-        uris = confs[start:end:every_other]
+        if end:
+            uris = confs[start:end:every_other]
+        else:
+            uris = confs[start::every_other]
     except:
         raise Exception("Exception! Something went wrong")
         uris = []
