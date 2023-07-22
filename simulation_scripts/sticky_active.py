@@ -7,6 +7,7 @@ Deepti Kannan, 2023
 """
 import time
 import numpy as np
+import pandas as pd
 import os, sys
 sys.path.append(os.getcwd())
 import polychrom
@@ -24,6 +25,17 @@ N=len(ids)
 print(f'Number of monomers: {N}')
 #1 is B, 0 is A
 flipped_ids = (1 - ids).astype(bool)
+
+def hcp(n):
+    dim = 3
+    k, j, i = [v.flatten()
+               for v in np.meshgrid(*([range(n)] * dim), indexing='ij')]
+    df = pd.DataFrame({
+        'x': 2 * i + (j + k) % 2,
+        'y': np.sqrt(3) * (j + 1/3 * (k % 2)),
+        'z': 2 * np.sqrt(6) / 3 * k,
+    })
+    return df
 
 def initialize_territories(density=0.477, mapN=1000, nchains=20):
     r_inactive = (3 * mapN / (4 * 3.141592 * density)) ** (1/3)
