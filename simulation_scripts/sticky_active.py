@@ -17,12 +17,42 @@ import openmm
 from simtk import unit
 from pathlib import Path
 
-basepath = Path("/net/levsha/share/deepti/simulations/chr2_Su2020")
+basepath = Path("/net/levsha/share/deepti/simulations/chr21_Su2020")
 #0 is B, 1 is A
-ids = np.load('/net/levsha/share/deepti/data/ABidentities_chr2_q_Su2020_2perlocus.npy')
+ids = np.load('/net/levsha/share/deepti/data/ABidentities_chr21_Su2020_2perlocus.npy')
 N=len(ids)
+print(f'Number of monomers: {N}')
 #1 is B, 0 is A
 flipped_ids = (1 - ids).astype(bool)
+
+def initialize_territories(density=0.477, mapN=1000, nchains=20):
+    r_inactive = (3 * mapN / (4 * 3.141592 * density)) ** (1/3)
+    r_confinement = (3 * mapN * nchains / (4 * 3.141592 * density)) ** (1/3)
+    print(r_inactive)
+    print(r_confinement)
+    #first calculate centroid positions of chains
+    lattice_size = 3
+    df = hcp(lattice_size)
+    df['radial_distance'] = np.sqrt(df['x']**2 + df['y']**2 + df['z']**2)
+    df.sort_values('radial_distance', inplace=True)
+    positions = df.to_numpy()[:, :3][:nchains]
+    # in units of sphere radii
+    max_diameter = pdist(positions).max()
+    #mini sphere size
+    rs = np.floor(2*r_confinement / max_diameter)
+    positions *= rs
+    print(rs)
+    starting_conf = []
+    for i in range(nchains):
+        centroid = positions[i]
+        def confine_chrom(pos):
+            x, y, z = pos
+            #reject position if it's more than 5% outside of the spherical radius
+            return ((np.sqrt((x - centroid[0])**2 + (y-centroid[1])**2 + (z-centroid[2])**2)) <= rs)
+        chrom_pos = starting_conformations.create_constrained_random_walk(mapN, confine_chrom, starting_point=(centroid[0], centroid[1], centroid[2]))
+        starting_conf.append(chrom_pos)
+    starting_conf = np.array(starting_conf).reshape((nchains*mapN, 3))
+    return starting_conf
 
 def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, timestep=170, nblocks=40000, blocksize=2000):
     """Run a single simulation on a GPU of a hetero-polymer with A monomers and B monomers. A monomers
@@ -75,7 +105,7 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, timestep=1
     particleD = unit.Quantity(D, kT / friction)
     integrator = ActiveBrownianIntegrator(timestep, collision_rate, particleD)
     gpuid = f"{gpuid}"
-    traj = basepath/f"stickyBB_{E0}_act{activity_ratio}_attr0.05/runs{nblocks}_{blocksize}_{ncopies}copies"
+    traj = basepath/f"stickyBB_{E0}_act{activity_ratio}_rep5.0_{N}/runs{nblocks}_{blocksize}_{ncopies}copies"
     Path(traj).mkdir(parents=True, exist_ok=True)
     reporter = HDF5Reporter(folder=traj, max_data_length=100, overwrite=True)
     sim = simulation.Simulation(
@@ -90,15 +120,16 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, timestep=1
         PBCbox=False,
         reporters=[reporter],
     )
-
-    polymer = starting_conformations.grow_cubic(N*ncopies, 2 * int(np.ceil(r)))
+    
+    polymer = initialize_territories()
+    #polymer = starting_conformations.grow_cubic(N*ncopies, 2 * int(np.ceil(r)))
     sim.set_data(polymer, center=True)  # loads a polymer, puts a center of mass at zero
     sim.set_velocities(v=np.zeros((N*ncopies, 3)))  # initializes velocities of all monomers to zero (no inertia)
     f_sticky = forces.selective_SSW(sim, 
                                        sticky_inds, 
                                        extraHardParticlesIdxs=[], #don't make any particles extra hard
-                                       repulsionEnergy=3.0, #base repulsion energy for all particles (same as polynomial_repulsive)
-                                       attractionEnergy=0.05, #base attraction energy for all particles
+                                       repulsionEnergy=5.0, #base repulsion energy for all particles (same as polynomial_repulsive)
+                                       attractionEnergy=0.0, #base attraction energy for all particles
                                        selectiveAttractionEnergy=E0)
     sim.add_force(f_sticky)
     sim.add_force(forces.spherical_confinement(sim, density=density, k=5.0))
@@ -129,7 +160,7 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, timestep=1
 
 if __name__ == '__main__':
     gpuid = int(sys.argv[1])
-    for act_ratio in [3, 5, 7, 10, 20]: 
-        for E0 in [0.0]:
+    for act_ratio in [1]: 
+        for E0 in [0.5]:
             run_sticky_sim(gpuid, 0, N, 20, E0, act_ratio)
 
