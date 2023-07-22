@@ -45,11 +45,11 @@ def initialize_inactive_center(density=0.477, mapN=1000, ncopies=17):
     
     def confine_active(pos):
         x, y, z = pos
-        outside_inner_sphere = (0.95*r_C <= np.sqrt(x**2 + y**2 + z**2))
+        outside_inner_sphere = (0.95*r_inactive <= np.sqrt(x**2 + y**2 + z**2))
         inside_outer_sphere = ((np.sqrt(x**2 + y**2 + z**2) - r_confinement) <= 0.05*r_confinement)
         return (inside_outer_sphere and outside_inner_sphere)
     
-    inactive_pos = create_constrained_random_walk(mapN, confine_inactive, starting_point=(0., 0., 0.))
+    inactive_pos = starting_conformations.create_constrained_random_walk(mapN, confine_inactive, starting_point=(0., 0., 0.))
     #choose a random starting point within the two spheres.
     theta = np.random.uniform(0.0, 1.0)
     theta = 2.0 * np.pi * theta
@@ -60,11 +60,11 @@ def initialize_inactive_center(density=0.477, mapN=1000, ncopies=17):
     x = r * np.sqrt(1.0 - u*u) * np.cos(theta)
     y = r * np.sqrt(1.0 - u*u) * np.sin(theta)
     z = r * u
-    active_pos = create_constrained_random_walk((ncopies - 1)*mapN, confine_active, 
+    active_pos = starting_conformations.create_constrained_random_walk((ncopies - 1)*mapN, confine_active, 
                                                 starting_point=(x, y, z))
     return np.concatenate((inactive_pos, active_pos))
 
-def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1, 
+def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1, E0=None, 
             inactive_loc="center", timestep=170, nblocks=20000, blocksize=2000):
     """Run a single simulation on a GPU of a collection of `nhot` active homopolymers and `ncold` inactive
     homopolymers of length N onomers in a spherical confinement.
@@ -117,7 +117,10 @@ def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1,
     particleD = unit.Quantity(D, kT / friction)
     integrator = ActiveBrownianIntegrator(timestep, collision_rate, particleD)
     gpuid = f"{gpuid}"
-    traj = basepath/f"active{nhot}_inactive{ncold}_act{activity_ratio}_center/run{run_number}"
+    if E0:
+        traj = basepath/f"active{nhot}_inactive{ncold}_act{activity_ratio}_E0{E0}_center/run{run_number}"
+    else:
+        traj = basepath/f"active{nhot}_inactive{ncold}_act{activity_ratio}_center/run{run_number}"
     Path(traj).mkdir(parents=True, exist_ok=True)
     reporter = HDF5Reporter(folder=traj, max_data_length=100, overwrite=True)
     sim = simulation.Simulation(
@@ -139,6 +142,18 @@ def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1,
         polymer = starting_conformations.grow_cubic(N*ncopies, 2 * int(np.ceil(r)))
     sim.set_data(polymer, center=True)  # loads a polymer, puts a center of mass at zero
     sim.set_velocities(v=np.zeros((N*ncopies, 3)))  # initializes velocities of all monomers to zero (no inertia)
+    if E0:
+        sticky_inds = np.arange(0, N*ncold, dtype="int")
+    else:
+        sticky_inds = []
+        E0 = 0.0
+    f_sticky = forces.selective_SSW(sim, 
+                                       sticky_inds, 
+                                       extraHardParticlesIdxs=[], #don't make any particles extra hard
+                                       repulsionEnergy=3.0, #base repulsion energy for all particles (same as polynomial_repulsive)
+                                       attractionEnergy=0.05, #base attraction energy for all particles
+                                       selectiveAttractionEnergy=E0)
+    sim.add_force(f_sticky)
     sim.add_force(forces.spherical_confinement(sim, density=density, k=5.0))
     sim.add_force(
         forcekits.polymer_chains(
@@ -151,11 +166,8 @@ def run_sim(gpuid, run_number, N, nhot, activity_ratio, ncold=1,
             },
             angle_force_func=None,
             angle_force_kwargs={},
-            nonbonded_force_func=forces.polynomial_repulsive,
-            nonbonded_force_kwargs={
-                "trunc": 3.0,  # this will let chains cross sometimes
-                #'trunc':10.0, # this will resolve chain crossings and will not let chain cross anymore
-            },
+            nonbonded_force_func=None,
+            nonbonded_force_kwargs={},
             except_bonds=True,
         )
     )
@@ -172,5 +184,5 @@ if __name__ == '__main__':
     gpuid = int(sys.argv[1])
     #16 active chromosomes, 1 inactive chromosomes, each with 1000 monomers
     for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]:
-        run_sim(gpuid, i, 1000, 16, 19.0)
+        run_sim(gpuid, i, 1000, 16, 1.0, E0=0.5)
 

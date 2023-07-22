@@ -21,7 +21,7 @@ from contrib.integrators import ActiveBrownianIntegrator
 total_runs = 20
 runs_per_gpu = 10
 
-def run_sim(gpuid, run_number, activity_ratio, timestep=170, ntimesteps=20000, blocksize=1000):
+def run_sim(gpuid, run_number, activity_ratio, timestep=170, ntimesteps=10000, blocksize=2000):
     """ Run a single simulation on GPU i."""
     ids = np.load('/net/levsha/share/deepti/data/ABidentities_blobel2021_chr2_35Mb_60Mb.npy')
     N=len(ids)
@@ -44,7 +44,7 @@ def run_sim(gpuid, run_number, activity_ratio, timestep=170, ntimesteps=20000, b
     particleD = unit.Quantity(D, kT/(friction * mass))
     integrator = ActiveBrownianIntegrator(timestep, collision_rate, particleD)
     gpuid = f"{gpuid}"
-    traj = f"/net/levsha/share/deepti/simulations/spherical_well_test/run{run_number}"
+    traj = f"/net/levsha/share/deepti/simulations/spherical_well_test/repulsive_walls_width4_depth5"
     Path(traj).mkdir(parents=True, exist_ok=True)
     reporter = HDF5Reporter(folder=traj, max_data_length=100, overwrite=True)
     sim = simulation.Simulation(
@@ -64,7 +64,10 @@ def run_sim(gpuid, run_number, activity_ratio, timestep=170, ntimesteps=20000, b
     sim.set_data(polymer, center=True)  # loads a polymer, puts a center of mass at zero
     sim.set_velocities(v=np.zeros((N,3)))
     particles = range(N)
-    sim.add_force(forces.spherical_well(sim, particles, r=0, width=r, depth=-5))
+    #this controls how shallow the walls of the potential are
+    width = 4.0
+    #want wall to start AFTER desired radius
+    sim.add_force(forces.spherical_well(sim, particles, r=(r+width/2), width=width, depth=5))
     sim.add_force(
         forcekits.polymer_chains(
             sim,
