@@ -99,7 +99,7 @@ def get_bead_msd_time_ave(Xhot, Xcold):
     return hot_msd_ave, cold_msd_ave
 
 
-def compute_single_trajectory_msd(simdir, start=100000, every_other=1, N=None):
+def compute_single_trajectory_msd(simdir, start=100000, every_other=1, end=None, N=None):
     """Compute MSDs for all N monomers over time using `ever_other` conformations
     starting at time point `start` from a single simulation in `simdir`.
     
@@ -131,9 +131,10 @@ def compute_single_trajectory_msd(simdir, start=100000, every_other=1, N=None):
         #N is number of monomers. Defaults to dimension of pos
         #should be set to length of subchain if there are subchains
         N = len(starting_pos)
-
+    if end is None:
+        end = len(data)
     dxs = []
-    for conformation in data[start::every_other]:
+    for conformation in data[start:end:every_other]:
         pos = load_URI(conformation)["pos"]
         ncopies = pos.shape[0] // N
         ens_ave_msd = []
@@ -148,6 +149,56 @@ def compute_single_trajectory_msd(simdir, start=100000, every_other=1, N=None):
     print(dxs.shape)
     return dxs
 
+def compute_single_trajectory_Rg2(simdir, start=100000, every_other=1, 
+                                  end=None, N=None):
+    """Compute MSDs for all N monomers over time using `ever_other` conformations
+    starting at time point `start` from a single simulation in `simdir`.
+    
+    Parameters
+    ----------
+    simdir : str or Path
+        path to directory containing .h5 files
+    start : int
+        block number to use as starting conformation for MSD calculation
+    every_other : int
+        number of blocks to skip when computing MSDs
+    N : int
+        number of monomers in a (sub)chain
+
+    Returns
+    -------
+    dxs : (n_timesteps, N)
+        MSDs (columns) over time (rows) of each of the N monomers
+
+    """
+
+    simdir = Path(simdir)
+    data = list_URIs(simdir)
+    if start == 0:
+        starting_pos = load_hdf5_file(simdir / "starting_conformation_0.h5")["pos"]
+    else:
+        starting_pos = load_URI(data[start])["pos"]
+    if N is None:
+        #N is number of monomers. Defaults to dimension of pos
+        #should be set to length of subchain if there are subchains
+        N = len(starting_pos)
+    if end is None:
+        end = len(data) + 1
+    Rgs_squared = []
+    for conformation in data[start:end:every_other]:
+        pos = load_URI(conformation)["pos"]
+        ncopies = pos.shape[0] // N
+        chain_ave = []
+        for i in range(ncopies):
+            posN = pos[N*i : N*(i+1)]
+            Rg2 = np.mean((posN - np.mean(posN, axis=0)) ** 2) * 3
+            chain_ave.append(Rg2)
+        #shape (ncopies, N)
+        Rgs_squared.append(np.array(chain_ave).mean(axis=0))
+    Rgs_squared = np.array(Rgs_squared)
+    print(simdir)
+    print(Rgs_squared.shape)
+    return Rgs_squared
 
 def save_MSD_ensemble_ave(basepath, savefile, ids=None, every_other=1, ncores=25):
     """Compute the ensemble averaged MSD curves for active and inactive regions

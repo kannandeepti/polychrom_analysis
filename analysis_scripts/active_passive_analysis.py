@@ -28,22 +28,24 @@ sys.path.append(parent_dir)
 from post_processing.analysis import *
 from post_processing.msd import *
 
-def process_param_sweep(simdir=Path('/net/levsha/share/deepti/simulations/chr2_Su2020')):
+def process_param_sweep(simdir=Path('/net/levsha/share/deepti/simulations/chr21_Su2020')):
     savepath = Path('/net/levsha/share/deepti/data') 
     basepaths = [d for d in simdir.iterdir()]
     simstrings = [str(d.name) for d in simdir.iterdir()]
     print(simstrings)
     radius_of_gyration = []
     for i, basepath in enumerate(basepaths):
+        mapN = int(str(basepath.name)[-4:])
+        print(mapN)
         conf_file = savepath / f"conformations/conformations_{simstrings[i]}.npy"
         if not conf_file.is_file() and (basepath/'runs40000_2000_20copies').is_dir():
             conformations = extract(basepath/'runs40000_2000_20copies', start=20000, every_other=200)
             print(f"Extracted {len(conformations)} conformations for simulation {simstrings[i]}")
             np.save(conf_file, conformations)
-            Rg2 = mean_squared_separation(conformations, savepath/'distance_maps', simstrings[i], metric='euclidean', N=1156)
+            Rg2 = mean_squared_separation(conformations, savepath/'distance_maps', simstrings[i], metric='euclidean', N=mapN)
             radius_of_gyration.append(Rg2)
             mat = contactmaps.monomerResolutionContactMapSubchains(
-                filenames=conformations, mapStarts=[i*1156 for i in range(20)], mapN=1156, cutoff=2.0
+                filenames=conformations, mapStarts=[i*mapN for i in range(20)], mapN=mapN, cutoff=2.0
             )
             mat2 = mat / (len(conformations)*20)
             # save cutoff radius = 2.0 contact map
@@ -55,6 +57,48 @@ def process_param_sweep(simdir=Path('/net/levsha/share/deepti/simulations/chr2_S
     #df['Rg2'] = radius_of_gyration
     #df.to_csv(savepath/"distance_maps/radius_of_gyration_chr2_Su2020.csv", index=False)
 
+def save_Rg2_over_time(start=0, every_other=10, end=1000):
+    """ Compute squared radius of gyration averaged over subchains in single
+    simulations. """
+
+    simdir = Path('/net/levsha/share/deepti/simulations/chr21_Su2020')
+    savepath = Path('/net/levsha/share/deepti/data') 
+
+    for d in simdir.iterdir():
+        simstring = str(d.name)
+        N = int(simstring[-4:])
+        Rg2file = savepath/f'Rg2_over_time_{simstring}_20chain_ave.csv'
+        if not msdfile.is_file() and (d/'runs40000_2000_20copies').is_dir():
+            Rg2 = compute_single_trajectory_Rg2(d/'runs40000_2000_20copies', 
+                                                start=start, every_other=every_other,
+                                                end=end, N=N)
+            df = pd.DataFrame()
+            df["Time"] = np.arange(0, len(Rg2)) * every_other
+            df["Rg2"] = Rg2
+            df.to_csv(Rg2file, index=False)
+
+def save_msd_over_time(start=0, every_other=10, end=None):
+    """ Compute squared radius of gyration averaged over subchains in single
+    simulations. """
+
+    simdir = Path('/net/levsha/share/deepti/simulations/chr21_Su2020')
+    savepath = Path('/net/levsha/share/deepti/data') 
+    for d in simdir.iterdir():
+        simstring = str(d.name)
+        N = int(simstring[-4:])
+        monomers_per_locus = int(N / 651)
+        ids = np.load(savepath/f'ABidentities_chr21_Su2020_{monomers_per_locus}perlocus.npy')
+        msdfile = savepath/f'msds_{simstring}_ens_ave.csv'
+        if not msdfile.is_file() and (d/'runs40000_2000_20copies').is_dir():
+            msd = compute_single_trajectory_msd(d/'runs40000_2000_20copies', 
+                                                start=start, every_other=every_other,
+                                                end=end, N=N)
+            print(msd.shape)
+            df = pd.DataFrame()
+            df["Time"] = np.arange(0, len(msd)) * every_other
+            df["active_MSD"] = msd[:, ids==1].mean(axis=1)
+            df["inactive_MSD"] = msd[:, ids==0].mean(axis=1)
+            df.to_csv(msdfile, index=False)
 
 def save_MSD_param_sweep(ids=None, ncores=25, start=1000, every_other=10, N=1156):
     """Compute the ensemble averaged MSD curves for active and inactive regions
@@ -72,7 +116,7 @@ def save_MSD_param_sweep(ids=None, ncores=25, start=1000, every_other=10, N=1156
         number of CPUs to parallelize computations over
 
     """
-    simdir = Path('/net/levsha/share/deepti/simulations/chr2_Su2020')
+    simdir = Path('/net/levsha/share/deepti/simulations/chr21_Su2020')
     savepath = Path('/net/levsha/share/deepti/data') 
     basepaths = []
     simstrings = []

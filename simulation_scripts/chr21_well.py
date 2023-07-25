@@ -21,9 +21,52 @@ from contrib.integrators import ActiveBrownianIntegrator
 total_runs = 20
 runs_per_gpu = 10
 
+def harmonic_well(sim_object, r, particles=None, center=[0, 0, 0], depth=1, name="harmonic_well"):
+    """
+    A flat-bottomed harmonic potential well, suited for example to confine a chromosome to its territory.
+
+    Parameters
+    ----------
+
+    particles : list of int or np.array
+        indices of particles that are attracted
+    r : float
+        Radius of the nucleus
+    center : vector, optional
+        center position of the sphere. This parameter is useful when confining
+        chromosomes to their territory.
+    depth : float, optional
+        Depth of attractive potential in kT
+        NOTE: switched sign from openmm-polymer, because it was confusing. Now
+        this parameter is really the depth of the well, i.e. positive =
+        attractive, negative = repulsive
+    """
+
+    force = openmm.CustomExternalForce(
+        "-step(d) * step(-d) * SPHWELLdepth * d^2;"
+        "d = (sqrt((x-SPHWELLx)^2 + (y-SPHWELLy)^2 + (z-SPHWELLz)^2) - SPHWELLradius)"
+    )
+
+    force.name = name
+
+    force.addGlobalParameter("SPHWELLradius", r * sim_object.conlen)
+    force.addGlobalParameter("SPHWELLdepth", depth * sim_object.kT)
+    force.addGlobalParameter("SPHWELLx", center[0] * sim_object.conlen)
+    force.addGlobalParameter("SPHWELLy", center[1] * sim_object.conlen)
+    force.addGlobalParameter("SPHWELLz", center[2] * sim_object.conlen)
+    
+    particles = range(sim_object.N) if particles is None else particles
+    # adding all the particles on which force acts
+    for i in particles:
+        # NOTE: the explicit type cast seems to be necessary if we have an np.array...
+        force.addParticle(int(i), [])
+
+    return force
+
+
 def run_sim(gpuid, run_number, activity_ratio, timestep=170, ntimesteps=10000, blocksize=2000):
     """ Run a single simulation on GPU i."""
-    ids = np.load('/net/levsha/share/deepti/data/ABidentities_blobel2021_chr2_35Mb_60Mb.npy')
+    ids = np.load('/net/levsha/share/deepti/data/ABidentities_chr21_Su2020_2perlocus.npy')
     N=len(ids)
     #0 is cold, 1 is hot
     D = np.ones((N, 3))
@@ -44,7 +87,7 @@ def run_sim(gpuid, run_number, activity_ratio, timestep=170, ntimesteps=10000, b
     particleD = unit.Quantity(D, kT/(friction * mass))
     integrator = ActiveBrownianIntegrator(timestep, collision_rate, particleD)
     gpuid = f"{gpuid}"
-    traj = f"/net/levsha/share/deepti/simulations/spherical_well_test/repulsive_walls_width4_depth5"
+    traj = f"/net/levsha/share/deepti/simulations/spherical_well_test/harmonic_well_depth5"
     Path(traj).mkdir(parents=True, exist_ok=True)
     reporter = HDF5Reporter(folder=traj, max_data_length=100, overwrite=True)
     sim = simulation.Simulation(
@@ -64,10 +107,8 @@ def run_sim(gpuid, run_number, activity_ratio, timestep=170, ntimesteps=10000, b
     sim.set_data(polymer, center=True)  # loads a polymer, puts a center of mass at zero
     sim.set_velocities(v=np.zeros((N,3)))
     particles = range(N)
-    #this controls how shallow the walls of the potential are
-    width = 4.0
     #want wall to start AFTER desired radius
-    sim.add_force(forces.spherical_well(sim, particles, r=(r+width/2), width=width, depth=5))
+    sim.add_force(harmonic_well(sim, particles, r=r, depth=5))
     sim.add_force(
         forcekits.polymer_chains(
             sim,
