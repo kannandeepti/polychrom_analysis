@@ -21,7 +21,7 @@ from pathlib import Path
 
 basepath = Path("/net/levsha/share/deepti/simulations/chr21_Su2020")
 #0 is B, 1 is A
-ids = np.load('/net/levsha/share/deepti/data/ABidentities_chr21_Su2020_10perlocus.npy')
+ids = np.load('/net/levsha/share/deepti/data/ABidentities_chr21_Su2020_2perlocus.npy')
 N=len(ids)
 print(f'Number of monomers: {N}')
 #1 is B, 0 is A
@@ -49,15 +49,15 @@ def square_lattice(n):
     })
     return df
 
-def initialize_territories(density=0.477, mapN=1000, nchains=20, lattice='hcp',
+def initialize_territories(volume_fraction, mapN, nchains, lattice='hcp',
                           rs=None):
-    r_chain = (3 * mapN / (4 * 3.141592 * density)) ** (1/3)
-    r_confinement = (3 * mapN * nchains / (4 * 3.141592 * density)) ** (1/3)
+    r_chain = ((mapN * (0.5)**3) / volume_fraction) ** (1/3)
+    r_confinement = ((nchains * mapN * (0.5)**3) / volume_fraction) ** (1/3)
     print(r_chain)
     print(r_confinement)
     #first calculate centroid positions of chains
     n_lattice_points = [i**3 for i in range(10)]
-    lattice_size = np.searchsorted(n_lattice_points, chains)
+    lattice_size = np.searchsorted(n_lattice_points, nchains)
     if lattice=='hcp':
         df = hcp(lattice_size)
     if lattice=='square':
@@ -78,6 +78,7 @@ def initialize_territories(density=0.477, mapN=1000, nchains=20, lattice='hcp',
         #rs is the desired cell size of each square in lattice
         positions *= rs
         #now set radius of sphere to be that of individual chain
+        rs = r_chain
     starting_conf = []
     for i in range(nchains):
         centroid = positions[i]
@@ -140,9 +141,9 @@ def spherical_well_array(sim_object, r, cell_size, particles=None,
     return force
     
     
-def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, density=0.477,
+def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, volume_fraction=0.2,
                    width=10.0, depth=5.0, #spherical well array parameters
-                   confine="single", timestep=170, nblocks=20000, blocksize=2000):
+                   confine="single", timestep=170, nblocks=600, blocksize=2000):
     """Run a single simulation on a GPU of a hetero-polymer with A monomers and B monomers. A monomers
     have a larger diffusion coefficient than B monomers, with an activity ratio of D_A / D_B.
 
@@ -185,8 +186,8 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, density=0.
     #vertically stack ncopies of this array
     D = np.tile(D, (ncopies, 1)) #shape (N*ncopies, 3)
     # monomer density in confinement in units of monomers/volume (25%)
-    r_chain = (3 * mapN / (4 * 3.141592 * density)) ** (1/3)
-    r = (3 * N * ncopies / (4 * 3.141592 * density)) ** (1 / 3)
+    r_chain = ((N * (0.5)**3) / volume_fraction) ** (1/3)
+    r = ((N * ncopies * (0.5)**3) / volume_fraction) ** (1/3)
     print(f"Radius of confinement: {r}")
     print(f"Radius of confined chain: {r_chain}")
     # the monomer diffusion coefficient should be in units of kT / friction, where friction = mass*collision_rate
@@ -199,7 +200,7 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, density=0.
     particleD = unit.Quantity(D, kT / friction)
     integrator = ActiveBrownianIntegrator(timestep, collision_rate, particleD)
     gpuid = f"{gpuid}"
-    traj = basepath/f"stickyBB_{E0}_act{activity_ratio}_rep5.0_{N}/runs{nblocks}_{blocksize}_{ncopies}copies"
+    traj = basepath/f"stickyBB_{E0}_act{activity_ratio}_rep5.0_{N}_sphwellarray_width{width:.0f}_depth{depth:.0f}/runs{nblocks}_{blocksize}_{ncopies}copies"
     Path(traj).mkdir(parents=True, exist_ok=True)
     reporter = HDF5Reporter(folder=traj, max_data_length=100, overwrite=True)
     sim = simulation.Simulation(
@@ -216,7 +217,7 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, density=0.
     )
     #set lattice size to be 5 times the radius of a confined chain so that the chains
     #stay far apart from each other and don't interact
-    polymer = initialize_territories(density=density, lattice='square', rs=5*r_chain)
+    polymer = initialize_territories(volume_fraction, N, ncopies, lattice='square', rs=5*r_chain)
     #polymer = starting_conformations.grow_cubic(N*ncopies, 2 * int(np.ceil(r)))
     sim.set_data(polymer, center=True)  # loads a polymer, puts a center of mass at zero
     sim.set_velocities(v=np.zeros((N*ncopies, 3)))  # initializes velocities of all monomers to zero (no inertia)
@@ -228,7 +229,7 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, density=0.
                                        selectiveAttractionEnergy=E0)
     sim.add_force(f_sticky)
     if confine == "single":
-        sim.add_force(forces.spherical_confinement(sim, density=density, k=5.0))
+        sim.add_force(forces.spherical_confinement(sim, r=r, k=5.0))
     elif confine == "many":
         sim.add_force(spherical_well_array(sim, cell_size=5*r_chain, r=width+r_chain, width=width, depth=depth))
         
