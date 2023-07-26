@@ -91,7 +91,7 @@ def run_sim(gpuid, run_number, activity_ratio, width=None, depth=5.0,
     if width:
         traj = f"/net/levsha/share/deepti/simulations/spherical_well_test/spherical_well_depth{depth:.0f}_width{width:.0f}"
     else:
-        traj = f"/net/levsha/share/deepti/simulations/spherical_well_test/harmonic_well_depth{depth:.0f}"
+        traj = f"/net/levsha/share/deepti/simulations/spherical_well_test/harmonic_well_depth{depth:.0f}_r{(r/2):.2f}"
     Path(traj).mkdir(parents=True, exist_ok=True)
     reporter = HDF5Reporter(folder=traj, max_data_length=100, overwrite=True)
     sim = simulation.Simulation(
@@ -117,7 +117,7 @@ def run_sim(gpuid, run_number, activity_ratio, width=None, depth=5.0,
     if width:
         sim.add_force(forces.spherical_well(sim, particles, r=r+width, width=width, depth=depth))
     else:
-        sim.add_force(harmonic_well(sim, r=r, depth=depth))
+        sim.add_force(harmonic_well(sim, r=r/2, depth=depth))
     sim.add_force(
         forcekits.polymer_chains(
             sim,
@@ -156,5 +156,4 @@ if __name__ == '__main__':
     #run_sim(gpuid, run_number)
     #for act_ratio in [10, 19, 25 + 2/3, 39]:
     #for i in range(gpuid*runs_per_gpu, (gpuid + 1)*runs_per_gpu):
-    run_sim(gpuid, 1, 7, width=4.0)
-    run_sim(gpuid, 1, 7, width=10.0)
+    run_sim(gpuid, 1, 7, depth=-20.0)
