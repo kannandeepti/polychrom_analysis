@@ -43,7 +43,7 @@ def harmonic_well(sim_object, r, particles=None, center=[0, 0, 0], depth=1, name
     """
 
     force = openmm.CustomExternalForce(
-        "-step(d) * step(-d) * SPHWELLdepth * d^2;"
+        "step(d) * step(-d) * SPHWELLdepth * d^2;"
         "d = (sqrt((x-SPHWELLx)^2 + (y-SPHWELLy)^2 + (z-SPHWELLz)^2) - SPHWELLradius)"
     )
 
@@ -64,7 +64,8 @@ def harmonic_well(sim_object, r, particles=None, center=[0, 0, 0], depth=1, name
     return force
 
 
-def run_sim(gpuid, run_number, activity_ratio, timestep=170, ntimesteps=10000, blocksize=2000):
+def run_sim(gpuid, run_number, activity_ratio, width=None, depth=5.0, 
+        timestep=170, ntimesteps=10000, blocksize=2000):
     """ Run a single simulation on GPU i."""
     ids = np.load('/net/levsha/share/deepti/data/ABidentities_chr21_Su2020_2perlocus.npy')
     N=len(ids)
@@ -87,7 +88,10 @@ def run_sim(gpuid, run_number, activity_ratio, timestep=170, ntimesteps=10000, b
     particleD = unit.Quantity(D, kT/(friction * mass))
     integrator = ActiveBrownianIntegrator(timestep, collision_rate, particleD)
     gpuid = f"{gpuid}"
-    traj = f"/net/levsha/share/deepti/simulations/spherical_well_test/harmonic_well_depth5"
+    if width:
+        traj = f"/net/levsha/share/deepti/simulations/spherical_well_test/spherical_well_depth{depth:.0f}_width{width:.0f}"
+    else:
+        traj = f"/net/levsha/share/deepti/simulations/spherical_well_test/harmonic_well_depth{depth:.0f}"
     Path(traj).mkdir(parents=True, exist_ok=True)
     reporter = HDF5Reporter(folder=traj, max_data_length=100, overwrite=True)
     sim = simulation.Simulation(
@@ -103,12 +107,17 @@ def run_sim(gpuid, run_number, activity_ratio, timestep=170, ntimesteps=10000, b
         reporters=[reporter],
     )
 
-    polymer = starting_conformations.grow_cubic(N, int(np.ceil(r)))
+    polymer = starting_conformations.grow_cubic(N, int(1.5*np.ceil(r)))
     sim.set_data(polymer, center=True)  # loads a polymer, puts a center of mass at zero
     sim.set_velocities(v=np.zeros((N,3)))
     particles = range(N)
     #want wall to start AFTER desired radius
-    sim.add_force(harmonic_well(sim, particles, r=r, depth=5))
+    #radius of spherical well - width = desired radius for given particle density (point where wall starts)
+    #want wall to start AFTER desired radius
+    if width:
+        sim.add_force(forces.spherical_well(sim, particles, r=r+width, width=width, depth=depth))
+    else:
+        sim.add_force(harmonic_well(sim, r=r, depth=depth))
     sim.add_force(
         forcekits.polymer_chains(
             sim,
@@ -147,4 +156,5 @@ if __name__ == '__main__':
     #run_sim(gpuid, run_number)
     #for act_ratio in [10, 19, 25 + 2/3, 39]:
     #for i in range(gpuid*runs_per_gpu, (gpuid + 1)*runs_per_gpu):
-    run_sim(gpuid, 1, 7)
+    run_sim(gpuid, 1, 7, width=4.0)
+    run_sim(gpuid, 1, 7, width=10.0)
