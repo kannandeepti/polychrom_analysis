@@ -9,6 +9,7 @@ import time
 import numpy as np
 import pandas as pd
 import os, sys
+from scipy.spatial.distance import pdist
 sys.path.append(os.getcwd())
 import polychrom
 from polychrom import forcekits, forces, simulation, starting_conformations
@@ -20,7 +21,7 @@ from pathlib import Path
 
 basepath = Path("/net/levsha/share/deepti/simulations/chr21_Su2020")
 #0 is B, 1 is A
-ids = np.load('/net/levsha/share/deepti/data/ABidentities_chr21_Su2020_2perlocus.npy')
+ids = np.load('/net/levsha/share/deepti/data/ABidentities_chr21_Su2020_10perlocus.npy')
 N=len(ids)
 print(f'Number of monomers: {N}')
 #1 is B, 0 is A
