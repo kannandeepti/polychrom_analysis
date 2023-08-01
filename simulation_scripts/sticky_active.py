@@ -143,7 +143,7 @@ def spherical_well_array(sim_object, r, cell_size, particles=None,
     
 def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, volume_fraction=0.2,
                    width=10.0, depth=5.0, #spherical well array parameters
-                   confine="single", timestep=170, nblocks=600, blocksize=2000):
+                   confine="single", timestep=170, nblocks=20000, blocksize=2000):
     """Run a single simulation on a GPU of a hetero-polymer with A monomers and B monomers. A monomers
     have a larger diffusion coefficient than B monomers, with an activity ratio of D_A / D_B.
 
@@ -176,6 +176,7 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, volume_fra
         number of time steps in a block
 
     """
+    ran_sim = False
     particle_inds = np.arange(0, N*ncopies, dtype="int")
     sticky_inds = particle_inds[np.tile(flipped_ids, ncopies)]
     D = np.ones((N, 3))
@@ -200,8 +201,13 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, volume_fra
     particleD = unit.Quantity(D, kT / friction)
     integrator = ActiveBrownianIntegrator(timestep, collision_rate, particleD)
     gpuid = f"{gpuid}"
-    traj = basepath/f"stickyBB_{E0}_act{activity_ratio}_rep5.0_{N}_sphwellarray_width{width:.0f}_depth{depth:.0f}/runs{nblocks}_{blocksize}_{ncopies}copies"
-    Path(traj).mkdir(parents=True, exist_ok=True)
+    traj = basepath/f"stickyBB_{E0}_act{activity_ratio}_rep3.0_{N}_sphwellarray_width{width:.0f}_depth{depth:.0f}/runs{nblocks}_{blocksize}_{ncopies}copies"
+    try:
+        Path(traj).mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        print(f"E0={E0}, activity ratio={act_ratio} already exists")
+        return ran_sim
+
     reporter = HDF5Reporter(folder=traj, max_data_length=100, overwrite=True)
     sim = simulation.Simulation(
         platform="CUDA", 
@@ -224,7 +230,7 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, volume_fra
     f_sticky = forces.selective_SSW(sim, 
                                        sticky_inds, 
                                        extraHardParticlesIdxs=[], #don't make any particles extra hard
-                                       repulsionEnergy=5.0, #base repulsion energy for all particles (same as polynomial_repulsive)
+                                       repulsionEnergy=3.0, #base repulsion energy for all particles (same as polynomial_repulsive)
                                        attractionEnergy=0.0, #base attraction energy for all particles
                                        selectiveAttractionEnergy=E0)
     sim.add_force(f_sticky)
@@ -256,11 +262,24 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, volume_fra
     print(f"Ran simulation in {(toc - tic):0.4f}s")
     sim.print_stats()  # In the end, print very simple statistics
     reporter.dump_data()  # always need to run in the end to dump the block cache to the disk
+    ran_sim = True
+    return ran_sim
 
 
 if __name__ == '__main__':
     gpuid = int(sys.argv[1])
-    for act_ratio in [1]: 
-        for E0 in [0.5]:
-            run_sticky_sim(gpuid, 0, N, 20, E0, act_ratio, confine="many", width=10.0, depth=5.0)
-
+    #params_to_sweep = [(1, 0.3), (1, 0.5), (5, 0.0), (7, 0.0), (2, 0.3), (3, 0.3),
+    #        (4, 0.3), (5, 0.3), (6, 0.3), (2, 0.5), (3, 0.5), (4, 0.5), (5, 0.5), (6, 0.5)] 
+    tic = time.time()
+    sims_ran = 0
+    for act_ratio in [1, 2, 3]:
+        for E0 in [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]:
+            ran_sim = run_sticky_sim(gpuid, 0, N, 20, E0, act_ratio, confine="many", width=20.0, depth=20.0)
+            if ran_sim:
+                sims_ran += 1
+    toc = time.time()
+    nsecs = toc - tic
+    nhours = int(np.floor(nsecs // 3600))
+    nmins = int((nsecs % 3600) // 60)
+    nsecs = int(nsecs % 60)
+    print(f"Ran {sims_ran} simulations in {nhours}h {nmins}m {nsecs}s") 
