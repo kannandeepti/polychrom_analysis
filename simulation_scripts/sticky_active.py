@@ -301,15 +301,13 @@ if __name__ == '__main__':
     E0_only = [(1, 0.15), (1, 0.1), (1, 0.05)]
     tic = time.time()
     sims_ran = 0
-    #for act_ratio in [4, 5, 6, 7]:
-    #    for E0 in [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]:
     all_params = param_set_1 + param_set_2[0:2] + acts_only
     #print(all_params)
-    for act_ratio, E0 in E0_only:
-        ran_sim = run_sticky_sim(gpuid, 0, N, 200, E0, act_ratio, time_stepping_fn=log_time_stepping,
-                                 confine="many", width=20.0, depth=20.0)
-        if ran_sim:
-            sims_ran += 1
+    for act_ratio in [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]:
+        for E0 in [0.0, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2]:
+            ran_sim = run_sticky_sim(gpuid, 0, N, 20, E0, act_ratio, confine="many", width=20.0, depth=20.0)
+            if ran_sim:
+                sims_ran += 1
     toc = time.time()
     nsecs = toc - tic
     nhours = int(np.floor(nsecs // 3600))
