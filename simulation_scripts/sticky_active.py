@@ -58,6 +58,7 @@ def initialize_territories(volume_fraction, mapN, nchains, lattice='hcp',
     #first calculate centroid positions of chains
     n_lattice_points = [i**3 for i in range(10)]
     lattice_size = np.searchsorted(n_lattice_points, nchains)
+    print(f'Lattice size = {lattice_size}')
     if lattice=='hcp':
         df = hcp(lattice_size)
     if lattice=='square':
@@ -143,7 +144,8 @@ def spherical_well_array(sim_object, r, cell_size, particles=None,
     
 def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, volume_fraction=0.2,
                    width=10.0, depth=5.0, #spherical well array parameters
-                   confine="single", timestep=170, nblocks=20000, blocksize=2000):
+                   confine="single", timestep=170, nblocks=20000, blocksize=2000,
+                   time_stepping_fn=None):
     """Run a single simulation on a GPU of a hetero-polymer with A monomers and B monomers. A monomers
     have a larger diffusion coefficient than B monomers, with an activity ratio of D_A / D_B.
 
@@ -256,8 +258,11 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, volume_fra
         )
     )
     tic = time.perf_counter()
-    for _ in range(nblocks):  # Do 10 blocks
-        sim.do_block(blocksize)  # Of 100 timesteps each. Data is saved automatically.
+    if time_stepping_fn:
+        time_stepping_fn(sim)
+    else:
+        for _ in range(nblocks):  # Do 10 blocks
+            sim.do_block(blocksize)  # Of 100 timesteps each. Data is saved automatically.
     toc = time.perf_counter()
     print(f"Ran simulation in {(toc - tic):0.4f}s")
     sim.print_stats()  # In the end, print very simple statistics
@@ -265,18 +270,46 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, volume_fra
     ran_sim = True
     return ran_sim
 
+def short_time_dynamics(sim, stop1=2000*2000, block1=50, stop2=10000*2000, block2=5000):
+    """Step until t=stop1 time steps with block size `block1`, and then step
+    until `stop2` time steps  with block size `block2`."""
+    nblocks = int(stop1 // block1)
+    for _ in range(nblocks):
+        sim.do_block(block1)
+    nblocks = int((stop2 - stop1) // block2)
+    for _ in range(nblocks):
+        sim.do_block(block2)
+
+def log_time_stepping(sim, ntimepoints=100, mint=50, maxt=10000*2000):
+    """ Save data at time points that are log-spaced between t=mint and t=maxt."""
+    timepoints = np.rint(np.logspace(np.log10(mint), np.log10(maxt), ntimepoints))
+    blocks = np.concatenate(([timepoints[0]], np.diff(timepoints))).astype(int)
+    for block in blocks:
+        if block >= 1:
+            sim.do_block(block)
 
 if __name__ == '__main__':
     gpuid = int(sys.argv[1])
     #params_to_sweep = [(1, 0.3), (1, 0.5), (5, 0.0), (7, 0.0), (2, 0.3), (3, 0.3),
     #        (4, 0.3), (5, 0.3), (6, 0.3), (2, 0.5), (3, 0.5), (4, 0.5), (5, 0.5), (6, 0.5)] 
+    acts_only = [(2, 0.0), (3, 0.0), (4, 0.0), (5, 0.0), (7, 0.0), (8, 0.0), (9, 0.0), (10, 0.0)]
+    #range of models with cs1 = 1.0
+    param_set_1 = [(1, 0.5), (3, 0.5), (5, 0.5), (7, 0.5),
+                   (8, 0.5), (9, 0.5), (10, 0.5)]
+    #range of models with cs1 = 0.6
+    param_set_2 = [(1, 0.25), (2, 0.15), (3, 0.1), (4, 0.05), (5, 0.0)]
+    E0_only = [(1, 0.15), (1, 0.1), (1, 0.05)]
     tic = time.time()
     sims_ran = 0
-    for act_ratio in [1, 2, 3]:
-        for E0 in [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]:
-            ran_sim = run_sticky_sim(gpuid, 0, N, 20, E0, act_ratio, confine="many", width=20.0, depth=20.0)
-            if ran_sim:
-                sims_ran += 1
+    #for act_ratio in [4, 5, 6, 7]:
+    #    for E0 in [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]:
+    all_params = param_set_1 + param_set_2[0:2] + acts_only
+    #print(all_params)
+    for act_ratio, E0 in E0_only:
+        ran_sim = run_sticky_sim(gpuid, 0, N, 200, E0, act_ratio, time_stepping_fn=log_time_stepping,
+                                 confine="many", width=20.0, depth=20.0)
+        if ran_sim:
+            sims_ran += 1
     toc = time.time()
     nsecs = toc - tic
     nhours = int(np.floor(nsecs // 3600))
