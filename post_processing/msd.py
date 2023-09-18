@@ -127,6 +127,8 @@ def compute_single_trajectory_msd(simdir, start=100000, every_other=1, end=None,
         starting_pos = load_hdf5_file(simdir / "starting_conformation_0.h5")["pos"]
     else:
         starting_pos = load_URI(data[start])["pos"]
+    ncopies = int(starting_pos.shape[0]/N)
+    print(ncopies)
     if N is None:
         #N is number of monomers. Defaults to dimension of pos
         #should be set to length of subchain if there are subchains
@@ -134,7 +136,7 @@ def compute_single_trajectory_msd(simdir, start=100000, every_other=1, end=None,
     if end is None:
         end = len(data)
     dxs = []
-    for conformation in data[start:end:every_other]:
+    for k, conformation in enumerate(data[start:end:every_other]):
         pos = load_URI(conformation)["pos"]
         ncopies = pos.shape[0] // N
         ens_ave_msd = []
@@ -146,7 +148,7 @@ def compute_single_trajectory_msd(simdir, start=100000, every_other=1, end=None,
         dxs.append(np.array(ens_ave_msd).mean(axis=0))
     dxs = np.array(dxs)
     print(simdir)
-    print(dxs.shape)
+    print(dxs[0])
     return dxs
 
 def compute_single_trajectory_Rg2(simdir, start=100000, every_other=1, 

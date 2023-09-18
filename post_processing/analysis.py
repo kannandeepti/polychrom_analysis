@@ -175,6 +175,8 @@ def contact_maps_over_time(
     ntimepoints,
     traj_length,
     time_between_snapshots=1,
+    time_window=10,
+    save_confs=False,
     savepath=Path("data"),
 ):
     """Plot an ensemble-averaged contact map at multiple `timepoints` in a simulation trajectory.
@@ -190,7 +192,13 @@ def contact_maps_over_time(
     ntimepoints : int
         number of time points at which to construct contact maps
     traj_length : int
-        max time of simulation trajectory
+        max time of simulation trajectory (in time blocks)
+    time_between_snapshots : int
+        number of blocks between correlated snapshots included in ensemble for each time point.
+        Defaults to 1.
+    time_window : int
+        window (in number of time blocks) within which to take correlated snapshots for each time point
+        ex: time_window of 10 implies snapshots will be taken between [t-5, t+5] for each time point t.
     savepath : str or Path
         path to directory where mean squared separation file will be written
 
@@ -200,11 +208,12 @@ def contact_maps_over_time(
     DT = traj_length / ntimepoints
     timepoints = np.arange(DT, (ntimepoints + 1) * DT, DT)
     print(timepoints)
-
+    half_window = time_window // 2
+    
     for t in timepoints:
-        # take 10 snapshots centered at t (5 before, 5 after) to average over
-        start = int(t - 5)
-        end = int(t + 5)
+        # take 11 snapshots centered at t (5 before, 5 after) to average over
+        start = int(t - half_window)
+        end = int(t + half_window + 1)
         conf_file = savepath / f"conformations_{simstring}_t{int(t)}.npy"
         if conf_file.is_file():
             conformations = np.load(conf_file)
@@ -213,14 +222,16 @@ def contact_maps_over_time(
             conformations, runs = extract_conformations(
                 basepath, start=start, end=end, every_other=time_between_snapshots
             )
-            np.save(conf_file, conformations)
+            if save_confs:
+                np.save(conf_file, conformations)
 
         mat = contactmaps.monomerResolutionContactMap(
             filenames=conformations, cutoff=2.0
         )
         mat2 = mat / len(conformations)
         # save cutoff radius = 2.0 contact map
-        np.save(f"data/contact_map_{simstring}_cutoff2.0.npy", mat2)
+        np.save(savepath/f"linear_relaxation/contact_map_{simstring}_t{int(t)}_window{time_window}_snapshotDT_{time_between_snapshots}_cutoff2.0.npy", mat2)
+        
 
 
 def process_existing_simulations(simdir=None, savepath=Path("data")):
