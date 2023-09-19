@@ -3,6 +3,7 @@
 Deepti Kannan, 2023"""
 
 from tqdm import tqdm
+from p_tqdm import p_map
 import itertools
 from itertools import combinations
 import multiprocessing as mp
@@ -56,6 +57,30 @@ def process_param_sweep(simdir=Path('/net/levsha/share/deepti/simulations/chr21_
     #df['sim'] = simstrings
     #df['Rg2'] = radius_of_gyration
     #df.to_csv(savepath/"distance_maps/radius_of_gyration_chr21_Su2020.csv", index=False)
+
+def boostrap_comp_scores(simdir=Path('/net/levsha/share/deepti/simulations/chr21_Su2020'),
+        ncores=25, nbootstraps=100):
+    """Sample 2000 snapshots with replacement from the 10000*20 snapshots that exist at steady
+    state (total trajectory is 20,000 blocks, there are 20 separate chains)."""
+
+    savepath = Path('/net/levsha/share/deepti/data') 
+    simstrings = [str(d.name) for d in simdir.glob('*rep3.0*')]
+    def boostrap_single_param(simstring):
+        mapN = 1302
+        conf_file = savepath / f"conformations/conformations_{simstring}.npy"
+        if conf_file.is_file():
+            conformations = np.load(conf_file)
+            comp_scores_B = []
+            for k in range(nbootstraps):
+                sampled_confs = np.random.choice(conformations, size=len(conformations), replace=True)
+                mat = contactmaps.monomerResolutionContactMapSubchains(
+                    filenames=conformations, mapStarts=[i*mapN for i in range(20)], mapN=mapN, cutoff=2.0
+                )
+                mat2 = mat / (len(conformations)*20)
+                cs, csA, csB = comp_score_1(mat2)
+                comp_scores_B.append(csB[200:1000])
+            np.save(savepath/f"boostrapped_comp_scores/comp_score_samples_{simstring}_n{nbootstraps}.npy", comp_scores_B)
+    p_map(boostrap_single_param, simstrings, num_cpus=ncores)
 
 def linear_relaxation(basepath=Path("/net/levsha/share/deepti/data/linear_relaxation/chr21_Su2020")):
     """ Compute comp scores over time for each hybrid linear model in this folder. """
@@ -286,4 +311,5 @@ if __name__ == "__main__":
     #comp_scores_dynamics([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [1, 2, 3, 4, 5, 7, 8, 9, 10])
     #comp_scores_dynamics([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], [1, 3, 5, 7, 8, 9, 10])
     #Rg2 = process_param_sweep()
-    linear_relaxation()
+    #linear_relaxation()
+    boostrap_comp_scores()

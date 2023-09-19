@@ -203,7 +203,7 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, volume_fra
     particleD = unit.Quantity(D, kT / friction)
     integrator = ActiveBrownianIntegrator(timestep, collision_rate, particleD)
     gpuid = f"{gpuid}"
-    traj = basepath/f"stickyBB_{E0}_act{activity_ratio}_rep3.0_{N}_sphwellarray_width{width:.0f}_depth{depth:.0f}/runs{nblocks}_{blocksize}_{ncopies}copies"
+    traj = basepath/f"stickyBB_{E0}_act{activity_ratio}_rep3.0_{N}_sphwellarray_width{width:.0f}_depth{depth:.0f}/runs20000_2000_200copies/blocks_10000_20000"
     try:
         Path(traj).mkdir(parents=True, exist_ok=False)
     except FileExistsError:
@@ -224,9 +224,13 @@ def run_sticky_sim(gpuid, run_number, N, ncopies, E0, activity_ratio, volume_fra
         reporters=[reporter],
     )
     #set lattice size to be 5 times the radius of a confined chain so that the chains
-    #stay far apart from each other and don't interact
-    polymer = initialize_territories(volume_fraction, N, ncopies, lattice='square', rs=5*r_chain)
-    #polymer = starting_conformations.grow_cubic(N*ncopies, 2 * int(np.ceil(r)))
+    #stay far apart from each other and don't interaction
+    if resume:
+        last_conf = list_URIs(traj.parent)[-1]
+        polymer = load_URI(last_conf)["pos"]
+    else:
+        polymer = initialize_territories(volume_fraction, N, ncopies, lattice='square', rs=5*r_chain)
+        #polymer = starting_conformations.grow_cubic(N*ncopies, 2 * int(np.ceil(r)))
     sim.set_data(polymer, center=True)  # loads a polymer, puts a center of mass at zero
     sim.set_velocities(v=np.zeros((N*ncopies, 3)))  # initializes velocities of all monomers to zero (no inertia)
     f_sticky = forces.selective_SSW(sim, 
@@ -303,11 +307,14 @@ if __name__ == '__main__':
     sims_ran = 0
     all_params = param_set_1 + param_set_2[0:2] + acts_only
     #print(all_params)
-    for act_ratio in [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]:
-        for E0 in [0.0, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2]:
-            ran_sim = run_sticky_sim(gpuid, 0, N, 20, E0, act_ratio, confine="many", width=20.0, depth=20.0)
-            if ran_sim:
-                sims_ran += 1
+    #for the sensitive region of parameter space, run simulations with 200 chains
+    #for act_ratio in [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]:
+    #    for E0 in [0.0, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2]:
+    for (E0, act_ratio) in param_set_2:
+        ran_sim = run_sticky_sim(gpuid, 0, N, 200, E0, act_ratio, confine="many", width=20.0, depth=20.0,
+                nblocks=10000, blocksize=2000)
+        if ran_sim:
+            sims_ran += 1
     toc = time.time()
     nsecs = toc - tic
     nhours = int(np.floor(nsecs // 3600))
