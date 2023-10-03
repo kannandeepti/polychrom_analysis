@@ -58,6 +58,34 @@ def process_param_sweep(simdir=Path('/net/levsha/share/deepti/simulations/chr21_
     #df['Rg2'] = radius_of_gyration
     #df.to_csv(savepath/"distance_maps/radius_of_gyration_chr21_Su2020.csv", index=False)
 
+def time_averaged_comp_scores(simdir=Path('/net/levsha/share/deepti/simulations/chr21_Su2020'),
+                             ncores=10):
+    """ For simulations with 200 chains, compute comp score from time averaged contact map
+    from each chain and then return a distribution over the ensemble."""
+    
+    savepath = Path('/net/levsha/share/deepti/data') 
+    basepaths = [d for d in simdir.glob('*rep3.0*')]
+    simstrings = [str(d.name) for d in simdir.glob('*rep3.0*')]
+    for i, basepath in enumerate(basepaths):
+        mapN = 1302
+        filename = savepath/f"comp_score_dynamics/comp_score_1_{simstrings[i]}_time_averaged.csv"
+        if (basepath/'runs20000_2000_200copies/blocks_10000_20000').is_dir() and not filename.is_file():
+            #2000 snapshots from a single trajectory
+            conformations = extract(basepath/'runs20000_2000_200copies/blocks_10000_20000', 
+                                    start=0, end=10000, every_other=5)
+            print(f"Extracted {len(conformations)} conformations for simulation {simstrings[i]}")
+            def comp_score_single_traj(k):
+                mat = contactmaps.monomerResolutionContactMapSubchains(
+                    filenames=conformations, mapStarts=[k*mapN], mapN=mapN, cutoff=2.0
+                )
+                mat2 = mat / (len(conformations))
+                cs, csA, csB = comp_score_1(mat2)
+                return ({"chain" : k, "cs1" : np.nanmean(cs[200:1000]),
+                   "cs1_A" : np.nanmean(csA[200:1000]), "cs1_B" : np.nanmean(csB[200:1000])})
+            dict_list = p_map(comp_score_single_traj, range(200), num_cpus=ncores)
+            df = pd.DataFrame.from_dict(dict_list)
+            df.to_csv(filename, index=False)
+
 def boostrap_comp_scores(simdir=Path('/net/levsha/share/deepti/simulations/chr21_Su2020'),
         ncores=25, nbootstraps=100):
     """Sample 2000 snapshots with replacement from the 10000*20 snapshots that exist at steady
@@ -78,7 +106,7 @@ def boostrap_comp_scores(simdir=Path('/net/levsha/share/deepti/simulations/chr21
                 )
                 mat2 = mat / (len(conformations)*20)
                 cs, csA, csB = comp_score_1(mat2)
-                comp_scores_B.append(csB[200:1000])
+                comp_scores_B.append(np.nanmean(csB[200:1000]))
             np.save(savepath/f"boostrapped_comp_scores/comp_score_samples_{simstring}_n{nbootstraps}.npy", comp_scores_B)
     p_map(boostrap_single_param, simstrings, num_cpus=ncores)
 
@@ -147,9 +175,12 @@ def comp_scores_over_time(basepath,
         # take 11 snapshots centered at t (5 before, 5 after) to average over
         start = int(t - half_window)
         end = int(t + half_window + 1)
-        conformations = extract(
-                basepath, start=start, end=end, every_other=time_between_snapshots
-            )
+        try:
+            conformations = extract(
+                    basepath, start=start, end=end, every_other=time_between_snapshots
+                )
+        except:
+            continue
         mat = contactmaps.monomerResolutionContactMapSubchains(
                 filenames=conformations, mapStarts=[i*mapN for i in range(nchains)], mapN=mapN, cutoff=2.0
             )
@@ -162,9 +193,10 @@ def comp_scores_over_time(basepath,
         dict_list.append({"t" : t, "cs1" : np.nanmean(cs[200:1000]),
                    "cs1_A" : np.nanmean(csA[200:1000]), "cs1_B" : np.nanmean(csB[200:1000])})
     df = pd.DataFrame.from_dict(dict_list)
-    df.to_csv(savepath/f"comp_score_dynamics/comp_score_1_{simstring}_logspaced.csv", index=False)
+    df.to_csv(savepath/f"comp_score_dynamics/comp_score_1_{simstring}.csv", index=False)
         
-def comp_scores_dynamics(E0s, acts, savepath=Path("/net/levsha/share/deepti/data")):
+def comp_scores_dynamics(E0s, acts, savepath=Path("/net/levsha/share/deepti/data"),
+                        resume=True):
     """ Extract conformations at different time points from each simulation."""
     
     basepath = Path("/net/levsha/share/deepti/simulations/chr21_Su2020")
@@ -179,17 +211,27 @@ def comp_scores_dynamics(E0s, acts, savepath=Path("/net/levsha/share/deepti/data
     
     for E0, act in tqdm(list(zip(E0s, acts))):
         sim = basepath/f"stickyBB_{E0}_act{act:.0f}_rep3.0_1302_sphwellarray_width20_depth20"
-        filename = savepath/f"comp_score_dynamics/comp_score_1_stickyBB_{E0}_act{act:.0f}_logspaced.csv"
+        if resume:
+            filename = savepath/f"comp_score_dynamics/comp_score_1_stickyBB_{E0}_act{act:.0f}_ss.csv"
+        else:
+            filename = savepath/f"comp_score_dynamics/comp_score_1_stickyBB_{E0}_act{act:.0f}_logspaced.csv"
         if (sim/'runs20000_2000_200copies').is_dir() and not filename.is_file():
             print(f'Computing comp score dynamics for E0={E0}, act={act}')
-            if act==1 and E0 in [0.15, 0.1, 0.05]:
-                #log stepping dynamics -- only 100 blocks saved, use all time points
-                comp_scores_over_time(sim/'runs20000_2000_200copies', 
-                                   f'stickyBB_{E0}_act{act:.0f}', 
-                                      time_window=0, timepoints=np.arange(0, 100, 1), nchains=200)   
+            if resume and (sim/'runs20000_2000_200copies/blocks_10000_20000').is_dir():
+                comp_scores_over_time(sim/'runs20000_2000_200copies/blocks_10000_20000',
+                                      f'stickyBB_{E0}_act{act:.0f}_ss',
+                                      #200 separate time points in steady state
+                                      #ensemble average over 200 chains * 10 snapshots
+                                      timepoints=np.arange(0, 10000, 50), nchains=200)
             else:
-                comp_scores_over_time(sim/'runs20000_2000_200copies', 
-                                  f'stickyBB_{E0}_act{act:.0f}', timepoints=timepoints, nchains=200)
+                if act==1 and E0 in [0.15, 0.1, 0.05]:
+                    #log stepping dynamics -- only 100 blocks saved, use all time points
+                    comp_scores_over_time(sim/'runs20000_2000_200copies', 
+                                       f'stickyBB_{E0}_act{act:.0f}_logspaced', 
+                                          time_window=0, timepoints=np.arange(0, 100, 1), nchains=200)   
+                else:
+                    comp_scores_over_time(sim/'runs20000_2000_200copies', 
+                                      f'stickyBB_{E0}_act{act:.0f}_logspaced', timepoints=timepoints, nchains=200)
 
 def save_Rg2_over_time(start=1000, every_other=10, end=None):
     """ Compute squared radius of gyration averaged over subchains in single
@@ -307,9 +349,11 @@ def save_MSD_param_sweep(ids=None, ncores=25, start=10000, every_other=10):
 
 if __name__ == "__main__":
     #dfs = ABsegregation_param_sweep()
-    #comp_scores_dynamics([0.0, 0.15, 0.05, 0.10, 0.25], [5, 2, 4, 3, 1]) 
+    #comp_scores_dynamics([0.0, 0.15, 0.05, 0.10, 0.25], [5, 2, 4, 3, 1])
+    #comp_scores_dynamics([0.15, 0.05, 0.10], [1, 1, 1])
     #comp_scores_dynamics([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [1, 2, 3, 4, 5, 7, 8, 9, 10])
+    time_averaged_comp_scores()
     #comp_scores_dynamics([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], [1, 3, 5, 7, 8, 9, 10])
     #Rg2 = process_param_sweep()
     #linear_relaxation()
-    boostrap_comp_scores()
+    #boostrap_comp_scores()
