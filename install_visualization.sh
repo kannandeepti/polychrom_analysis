@@ -9,7 +9,7 @@ Why is this separate from the `polychrom` environment?
 
 """
 
-conda create -n polyvis python=3.9 matplitlib numpy scipy jupyter ipython pandas h5py joblib seaborn numba
+conda create -n polyvis python=3.9 matplotlib numpy scipy jupyter ipython pandas h5py joblib seaborn numba
 conda activate polyvis
 pip install -U git+https://github.com/open2c/polychrom
 conda install nglview -c conda-forge
