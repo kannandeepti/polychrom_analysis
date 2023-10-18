@@ -3,24 +3,13 @@
 Requires nglutils (pip install -U git+https://github.com/mirnylab/nglutils)
 and nglview (conda install nglview -c conda-forge)
 
-For best results, run in a clean conda environment with provided .yml file.
+For best results, run in a clean conda environment with provided install_visualization.sh script.
 
 Deepti Kannan, 2023"""
 
-import os
 from pathlib import Path
-import importlib as imp
-from collections import defaultdict
-import h5py
-import json
-from copy import deepcopy
-import multiprocessing as mp
-
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 
 import numpy as np
-import pandas as pd
 
 import polychrom
 from polychrom.hdf5_format import list_URIs, load_URI, load_hdf5_file
