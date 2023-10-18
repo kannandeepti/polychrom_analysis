@@ -1,5 +1,6 @@
-!/bin/bash
-""" Script to create a clean conda environment solely for the
+#!/bin/bash
+<<comment
+Script to create a clean conda environment solely for the
 purposes of visualizing polychrom snapshots with NGLview
 and post-processing analysis. 
 
@@ -7,7 +8,7 @@ Why is this separate from the `polychrom` environment?
 - due to version incompatibilities with openmm
 - TODO: figure out an all encompasing environment for simulations + analysis
 
-"""
+comment
 
 conda create -n polyvis python=3.9 matplotlib numpy scipy jupyter ipython pandas h5py joblib seaborn numba
 conda activate polyvis
