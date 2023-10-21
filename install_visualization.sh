@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 <<comment
 Script to create a clean conda environment solely for the
 purposes of visualizing polychrom snapshots with NGLview
@@ -11,7 +11,7 @@ Why is this separate from the `polychrom` environment?
 comment
 
 conda create -n polyvis python=3.9 matplotlib numpy scipy jupyter ipython pandas h5py joblib seaborn numba
-conda activate polyvis
+source activate polyvis
 pip install -U git+https://github.com/open2c/polychrom
 conda install nglview -c conda-forge
 pip install -U git+https://github.com/mirnylab/nglutils
