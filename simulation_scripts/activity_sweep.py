@@ -139,16 +139,16 @@ def run_monomer_diffusion(
 
 
 if __name__ == "__main__":
-    #Grab task ID and number of tasks
+    # Grab task ID and number of tasks
     my_task_id = int(sys.argv[1]) - 1
     num_tasks = int(sys.argv[2])
 
-    #parameters to sweep
+    # parameters to sweep
     act_values = np.arange(1.0, 7.0, 1.0)
     print(act_values)
-    
-    #batch to process with this task
-    acts_per_task = act_values[my_task_id:len(act_values):num_tasks]
+
+    # batch to process with this task
+    acts_per_task = act_values[my_task_id : len(act_values) : num_tasks]
     print(acts_per_task)
     for activity_ratio in acts_per_task:
         print(f"Running simulation with activity ratio: {activity_ratio}")
