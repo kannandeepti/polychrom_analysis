@@ -1,21 +1,15 @@
-""" Script to visualize simulation snapshots
+""" Script to visualize simulation snapshots / make animations.
+
+Requires nglutils (pip install -U git+https://github.com/mirnylab/nglutils)
+and nglview (conda install nglview -c conda-forge)
+
+For best results, run in a clean conda environment with provided install_visualization.sh script.
 
 Deepti Kannan, 2023"""
 
-import os
 from pathlib import Path
-import importlib as imp
-from collections import defaultdict
-import h5py
-import json
-from copy import deepcopy
-import multiprocessing as mp
-
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 
 import numpy as np
-import pandas as pd
 
 import polychrom
 from polychrom.hdf5_format import list_URIs, load_URI, load_hdf5_file
@@ -55,14 +49,14 @@ def get_chrom_names(nchains, mapN):
     chrom_names = ngu.intlist_to_alpha(chromIDs)
     return chrom_names
 
-def visualize_snapshot(X, nchains, mapN=None, ids=None, run=-1, chrom=None, color_by="monomer_id"):
-    """ Visualize a simulation snapshot, coloring monomers either by A/B identity or
+def visualize(X, nchains, mapN=None, ids=None, chrom=None, color_by="monomer_id"):
+    """ Visualize a simulation snapshot or animation, coloring monomers either by A/B identity or
     by chromosomes number.
     
     Parameters
     ----------
-    X : np.ndarray[float] (totalN, 3)
-        matrix of monomer positions
+    X : np.ndarray[float] (totalN, 3) or (num_t, totalN, 3)
+        matrix of monomer positions. if 3-dimensional, first dimension is time.
     nchains : int
         number of chains in simulation
     ids : array-like (mapN,)
@@ -75,6 +69,9 @@ def visualize_snapshot(X, nchains, mapN=None, ids=None, run=-1, chrom=None, colo
         if "monomer_id", color by A/B identity.
         if "chrom_id", color by chromosomes.
     """
+    if (X.ndim != 2 and X.ndim != 3) or X.shape[-1] != 3:
+        raise ValueError("X should have shape (num_t, N, 3) or (N, 3)")
+        
     monomer_names = get_monomer_names_from_ids(ids)
     #number of monomers in one subchain
     if mapN is None:
@@ -93,13 +90,20 @@ def visualize_snapshot(X, nchains, mapN=None, ids=None, run=-1, chrom=None, colo
             top = ngu.mdtop_for_polymer(mapN, atom_names=monomer_names)
         else:
             top = ngu.mdtop_for_polymer(mapN, atom_names=chrom_names[chrom*mapN : (chrom+1)*mapN])
-        view = ngu.xyz2nglview(X[chrom * mapN : (chrom + 1) * mapN], top=top)
+        if X.ndim == 3:
+            #this is an animation! first dimension is time
+            view = ngu.xyz2nglview(X[:, chrom * mapN : (chrom + 1) * mapN, :], top=top)
+        else:
+            #this is a snapshot
+            view = ngu.xyz2nglview(X[chrom * mapN : (chrom + 1) * mapN], top=top)
     else:
         #visualize all `nchains` chromosomes
         if color_by=="monomer_id":
-            top = ngu.mdtop_for_polymer(totalN, atom_names=all_monomer_names)
+            top = ngu.mdtop_for_polymer(totalN, atom_names=all_monomer_names,
+                                       chains=[(i*mapN, i*mapN + mapN, False) for i in range(0, nchains)])
         else:
-            top = ngu.mdtop_for_polymer(totalN, atom_names=chrom_names)
+            top = ngu.mdtop_for_polymer(totalN, atom_names=chrom_names,
+                                       chains=[(i*mapN, i*mapN + mapN, False) for i in range(0, nchains)])
         view = ngu.xyz2nglview(X, top=top)
     view.center()
     if color_by == "monomer_id":
@@ -150,49 +154,3 @@ def extract_trajectory(simdir, start=0, end=-1, every_other=10):
         X.append(pos)
     X = np.array(X)
     return X
-
-def make_animation(X, nchains=None, mapN=None, ids=None, color_by='monomer_id'):
-    """ Make an animation with NGLview of a simulation trajectory.
-    
-    Parameters
-    ----------
-    X : np.ndarray[float] (totalN, 3)
-        matrix of monomer positions
-    nchains : int
-        number of chains in simulation
-    ids : array-like (mapN,)
-        array of monomer types (0 for B, 1 for A)
-    mapN : int
-        number of monomers per chain. If None, infers from len(ids).
-    color_by : str
-        if "monomer_id", color by A/B identity.
-        if "chrom_id", color by chromosome
-    
-    """
-    if color_by=='monomer_id':
-        monomer_names = get_monomer_names_from_ids(ids)
-        monomer_names = monomer_names * nchains
-    else:
-        monomer_names = get_chrom_names(nchains, mapN)
-    N = len(monomer_names)
-    top = ngu.mdtop_for_polymer(N, atom_names=monomer_names,
-                               chains=[(i*mapN, i*mapN + mapN, False) for i in range(0, nchains)])
-    view_anim = ngu.xyz2nglview(X, top=top)
-    view_anim.center()
-    if color_by=='monomer_id':
-        view_anim.add_representation('ball+stick', selection='.A',
-                                                colorScheme='uniform',
-                                                colorValue=0xff4242)
-
-        view_anim.add_representation('ball+stick', selection='.B',
-                                                  colorScheme='uniform',
-                                                  colorValue=0x475FD0)
-    else:
-        cmap = cm.get_cmap('tab20')
-        color_codes = [cmap(i % 20) for i in range(nchains)]
-        hex_color_codes = [mcolors.to_hex(color[:3]) for color in color_codes]
-        for i in range(nchains):
-            view_anim.add_representation('ball+stick', selection=f'.{ascii_uppercase[i % 26]}',
-                                            colorScheme='uniform',
-                                            colorValue=hex_color_codes[i])
-    return view_anim
