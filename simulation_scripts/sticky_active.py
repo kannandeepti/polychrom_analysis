@@ -9,11 +9,13 @@ import time
 import numpy as np
 import pandas as pd
 import os, sys
-from scipy.spatial.distance import pdist
 sys.path.append(os.getcwd())
+from scipy.spatial.distance import pdist
 import polychrom
 from polychrom import forcekits, forces, simulation, starting_conformations
 from contrib.integrators import ActiveBrownianIntegrator
+from contrib.forces import spherical_well_array
+from contrib.initialize_chains import initialize_territories
 from polychrom.hdf5_format import HDF5Reporter
 import openmm
 from simtk import unit
@@ -29,143 +31,6 @@ print(f'Number of monomers: {N}')
 #1 is B, 0 is A
 flipped_ids = (1 - ids).astype(bool)
 
-def hcp(n):
-    dim = 3
-    k, j, i = [v.flatten()
-               for v in np.meshgrid(*([range(n)] * dim), indexing='ij')]
-    df = pd.DataFrame({
-        'x': 2 * i + (j + k) % 2,
-        'y': np.sqrt(3) * (j + 1/3 * (k % 2)),
-        'z': 2 * np.sqrt(6) / 3 * k,
-    })
-    return df
-
-def square_lattice(n):
-    dim = 3
-    k, j, i = [v.flatten()
-               for v in np.meshgrid(*([range(n)] * dim), indexing='ij')]
-    df = pd.DataFrame({
-        'x': i,
-        'y': j,
-        'z': k,
-    })
-    return df
-
-def initialize_territories(volume_fraction, mapN, nchains, lattice='hcp',
-                          rs=None):
-    """ Initialize each chain as a constrained random walk within a sphere.
-    Spheres are located on a lattice (hcp or square) within simulation volume.
-
-    Parameters
-    ----------
-    volume_fraction : float
-        fraction of simulation volume that monomers occupy.
-    mapN : int
-        number of monomers per chain
-    nchains : int
-        number of chains
-    lattice : 'hcp' or 'square'
-        lattice to put spheres in
-    rs : float
-        desired cell size of each cell in lattice.
-        If None, assumes a dense packing of squares.
-    
-    Returns
-    -------
-    starting_conf : np.ndarray[float] (mapN * nchains, 3)
-        initial x,y,z positions of all monomers
-
-    """
-    r_chain = ((mapN * (0.5)**3) / volume_fraction) ** (1/3)
-    r_confinement = ((nchains * mapN * (0.5)**3) / volume_fraction) ** (1/3)
-    print(r_chain)
-    print(r_confinement)
-    #first calculate centroid positions of chains
-    n_lattice_points = [i**3 for i in range(10)]
-    lattice_size = np.searchsorted(n_lattice_points, nchains)
-    print(f'Lattice size = {lattice_size}')
-    if lattice=='hcp':
-        df = hcp(lattice_size)
-    if lattice=='square':
-        df = square_lattice(lattice_size)
-    else:
-        raise ValueError('only hcp and square lattices implemented so far')
-    df['radial_distance'] = np.sqrt(df['x']**2 + df['y']**2 + df['z']**2)
-    df.sort_values('radial_distance', inplace=True)
-    positions = df.to_numpy()[:, :3][:nchains]
-    if rs is None:
-        #assume dense packing of spheres (rs is maximum allowed)
-        # in units of sphere radii
-        max_diameter = pdist(positions).max()
-        #mini sphere size
-        rs = np.floor(2*r_confinement / max_diameter)
-        positions *= rs
-    else:
-        #rs is the desired cell size of each square in lattice
-        positions *= rs
-        #now set radius of sphere to be that of individual chain
-        rs = r_chain
-    starting_conf = []
-    for i in range(nchains):
-        centroid = positions[i]
-        def confine_chrom(pos):
-            x, y, z = pos
-            #reject position if it's more than 5% outside of the spherical radius
-            return ((np.sqrt((x - centroid[0])**2 + (y-centroid[1])**2 + (z-centroid[2])**2)) <= rs)
-        chrom_pos = starting_conformations.create_constrained_random_walk(mapN, confine_chrom, starting_point=(centroid[0], centroid[1], centroid[2]))
-        starting_conf.append(chrom_pos)
-    starting_conf = np.array(starting_conf).reshape((nchains*mapN, 3))
-    return starting_conf
-
-def spherical_well_array(sim_object, r, cell_size, particles=None,
-                         width=1, depth=1, name="spherical_well_array"):
-    """
-    An (array of) spherical potential wells. Uses floor functions to map
-    particle positions to the coordinates of the well.
-
-    Parameters
-    ----------
-
-    r : float
-        Radius of the nucleus
-    cell_size : float
-        width of cell in lattice of spherical wells
-    particles : list of int or np.array
-        indices of particles that are attracted
-    width : float, optional
-        Width of attractive well, nm.
-    depth : float, optional
-        Depth of attractive potential in kT
-        Positive means the walls are repulsive (i.e chain confined within lamina).
-        Negative means walls are attractive (i.e. attraction to lamina)
-    """
-
-    force = openmm.CustomExternalForce(
-        "step(1+d) * step(1-d) * SPHWELLdepth * (1 + cos(3.1415926536*d)) / 2;"
-        "d = (sqrt((x1-SPHWELLx)^2 + (y1-SPHWELLy)^2 + (z1-SPHWELLz)^2) - SPHWELLradius) / SPHWELLwidth;"
-        "x1 = x - L*floor(x/L);"
-        "y1 = y - L*floor(y/L);"
-        "z1 = z - L*floor(z/L);"
-    )
-    force.name = name
-    particles = range(sim_object.N) if particles is None else particles
-    center = 3 * [cell_size/2]
-    
-    force.addGlobalParameter("SPHWELLradius", r * sim_object.conlen)
-    force.addGlobalParameter("SPHWELLwidth", width * sim_object.conlen)
-    force.addGlobalParameter("SPHWELLdepth", depth * sim_object.kT)
-    force.addGlobalParameter("L", cell_size * sim_object.conlen)
-    force.addGlobalParameter("SPHWELLx", center[0] * sim_object.conlen)
-    force.addGlobalParameter("SPHWELLy", center[1] * sim_object.conlen)
-    force.addGlobalParameter("SPHWELLz", center[2] * sim_object.conlen)
-
-    # adding all the particles on which force acts
-    for i in particles:
-        # NOTE: the explicit type cast seems to be necessary if we have an np.array...
-        force.addParticle(int(i), [])
-
-    return force
-    
     
 def run_sticky_sim(gpuid, N, ncopies, E0, activity_ratio, volume_fraction=0.2,
                    width=10.0, depth=5.0, #spherical well array parameters
