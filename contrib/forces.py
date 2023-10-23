@@ -13,8 +13,15 @@ except Exception:
     import simtk.openmm as openmm
 
 
-def spherical_well_array(sim_object, r, cell_size, particles=None,
-                         width=1, depth=1, name="spherical_well_array"):
+def spherical_well_array(
+    sim_object,
+    r,
+    cell_size,
+    particles=None,
+    width=1,
+    depth=1,
+    name="spherical_well_array",
+):
     """
     An (array of) spherical potential wells. Uses floor functions to map
     particle positions to the coordinates of the well.
@@ -45,8 +52,8 @@ def spherical_well_array(sim_object, r, cell_size, particles=None,
     )
     force.name = name
     particles = range(sim_object.N) if particles is None else particles
-    center = 3 * [cell_size/2]
-    
+    center = 3 * [cell_size / 2]
+
     force.addGlobalParameter("SPHWELLradius", r * sim_object.conlen)
     force.addGlobalParameter("SPHWELLwidth", width * sim_object.conlen)
     force.addGlobalParameter("SPHWELLdepth", depth * sim_object.kT)
