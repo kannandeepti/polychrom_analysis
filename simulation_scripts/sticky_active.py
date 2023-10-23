@@ -169,7 +169,7 @@ def spherical_well_array(sim_object, r, cell_size, particles=None,
     
 def run_sticky_sim(gpuid, N, ncopies, E0, activity_ratio, volume_fraction=0.2,
                    width=10.0, depth=5.0, #spherical well array parameters
-                   confine="single", timestep=170, nblocks=20000, blocksize=2000,
+                   confine="many", timestep=170, nblocks=20000, blocksize=2000,
                    time_stepping_fn=None):
     """Run a single simulation on a GPU of a hetero-polymer with A monomers and B monomers. A monomers
     have a larger diffusion coefficient than B monomers, with an activity ratio of D_A / D_B.
@@ -321,23 +321,23 @@ def log_time_stepping(sim, ntimepoints=100, mint=50, maxt=10000*2000):
 
 if __name__ == '__main__':
     gpuid = int(sys.argv[1])
-    acts_only = [(2, 0.0), (3, 0.0), (4, 0.0), (5, 0.0), (7, 0.0), (8, 0.0), (9, 0.0), (10, 0.0)]
     #range of models with cs1 = 1.0
     param_set_1 = [(1, 0.5), (3, 0.5), (5, 0.5), (7, 0.5),
                    (8, 0.5), (9, 0.5), (10, 0.5)]
     #range of models with cs1 = 0.6
     param_set_2 = [(1, 0.25), (2, 0.15), (3, 0.1), (4, 0.05), (5, 0.0)]
+    acts_only = [(2, 0.0), (3, 0.0), (4, 0.0), (5, 0.0), (7, 0.0), (8, 0.0), (9, 0.0), (10, 0.0)]
     E0_only = [(1, 0.15), (1, 0.1), (1, 0.05)]
     tic = time.time()
     sims_ran = 0
     all_params = param_set_1 + param_set_2 + acts_only + E0_only
+    test_params = [(1, 0.0), (2, 0.4)]
     #print(all_params)
     #for the sensitive region of parameter space, run simulations with 200 chains
     #for act_ratio in [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]:
     #    for E0 in [0.0, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2]:
-    for (E0, act_ratio) in all_params:
-        ran_sim = run_sticky_sim(gpuid, 0, N, 200, E0, act_ratio, confine="many", width=20.0, depth=20.0,
-                nblocks=10000, blocksize=2000)
+    for (E0, act_ratio) in test_params:
+        ran_sim = run_sticky_sim(gpuid, N, 20, E0, act_ratio, nblocks=1000, blocksize=100)
         if ran_sim:
             sims_ran += 1
     toc = time.time()
