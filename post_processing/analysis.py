@@ -11,15 +11,23 @@ correlation. Functions to compute all of these are available here.
 Deepti Kannan. 2022
 """
 
-
 import itertools
 import multiprocessing as mp
+import sys
 from functools import partial
+from itertools import combinations
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import polychrom
+from tqdm import tqdm
+
+try:
+    import polychrom
+except:
+    sys.path.append("/home/dkannan/git-remotes/polychrom/")
+    import polychrom
+
 from polychrom import contactmaps
 from polychrom.hdf5_format import list_URIs, load_URI
 from scipy.spatial.distance import pdist, squareform
@@ -42,7 +50,10 @@ def extract(path, start=100000, every_other=10000, end=200000):
     """
     try:
         confs = list_URIs(path)
-        uris = confs[start:end:every_other]
+        if end:
+            uris = confs[start:end:every_other]
+        else:
+            uris = confs[start::every_other]
     except:
         raise Exception("Exception! Something went wrong")
         uris = []
@@ -84,7 +95,9 @@ def extract_conformations(basepath, ncores=24, chain=True, **kwargs):
         return confs, runs
 
 
-def mean_squared_separation(conformations, savepath, simstring, N=1000):
+def mean_squared_separation(
+    conformations, savepath, simstring, rsquared=False, metric="sqeuclidean", N=1000
+):
     """Compute mean squared separation between all pairs of monomers averaged over all
     conformations. Saves N x N matrix to csv file. Also saves mean squared distance
     from each monomer to the origin to csv file.
@@ -103,20 +116,33 @@ def mean_squared_separation(conformations, savepath, simstring, N=1000):
     """
     # mean squared separation between all pairs of monomers
     msd = np.zeros((N, N))
+    # mean radius of gyration of subchains
+    Rg2 = 0.0
     # mean squared separation between each monomer and origin
-    rsquared = np.zeros((N,))
+    if rsquared:
+        rsquared = np.zeros((N,))
+    num_confs = 0
     for conformation in conformations:
         pos = load_URI(conformation)["pos"]
-        rsquared += np.sum(pos**2, axis=1)
-        dist = pdist(pos, metric="sqeuclidean")
-        Y = squareform(dist)
-        msd += Y
-    msd /= len(conformations)
-    rsquared /= len(conformations)
+        ncopies = pos.shape[0] // N
+        for i in range(ncopies):
+            posN = pos[N * i : N * (i + 1)]
+            if rsquared:
+                rsquared += np.sum(posN**2, axis=1)
+            Rg2 += np.mean((posN - np.mean(posN, axis=0)) ** 2) * 3
+            dist = pdist(posN, metric=metric)
+            Y = squareform(dist)
+            msd += Y
+        num_confs += ncopies
+    msd /= num_confs
+    Rg2 /= num_confs
+    if rsquared:
+        rsquared /= num_confs
+        df2 = pd.DataFrame(rsquared)
+        df2.to_csv(Path(savepath) / f"rsquared_{simstring}.csv", index=False)
     df = pd.DataFrame(msd)
-    df.to_csv(Path(savepath) / f"mean_squared_separation_{simstring}.csv", index=False)
-    df2 = pd.DataFrame(rsquared)
-    df2.to_csv(Path(savepath) / f"rsquared_{simstring}.csv", index=False)
+    df.to_csv(Path(savepath) / f"mean_{metric}_distance_{simstring}.csv", index=False)
+    return Rg2
 
 
 def contour_alignment(savepath, simstring):
@@ -154,6 +180,8 @@ def contact_maps_over_time(
     ntimepoints,
     traj_length,
     time_between_snapshots=1,
+    time_window=10,
+    save_confs=False,
     savepath=Path("data"),
 ):
     """Plot an ensemble-averaged contact map at multiple `timepoints` in a simulation trajectory.
@@ -169,7 +197,13 @@ def contact_maps_over_time(
     ntimepoints : int
         number of time points at which to construct contact maps
     traj_length : int
-        max time of simulation trajectory
+        max time of simulation trajectory (in time blocks)
+    time_between_snapshots : int
+        number of blocks between correlated snapshots included in ensemble for each time point.
+        Defaults to 1.
+    time_window : int
+        window (in number of time blocks) within which to take correlated snapshots for each time point
+        ex: time_window of 10 implies snapshots will be taken between [t-5, t+5] for each time point t.
     savepath : str or Path
         path to directory where mean squared separation file will be written
 
@@ -179,11 +213,12 @@ def contact_maps_over_time(
     DT = traj_length / ntimepoints
     timepoints = np.arange(DT, (ntimepoints + 1) * DT, DT)
     print(timepoints)
+    half_window = time_window // 2
 
     for t in timepoints:
-        # take 10 snapshots centered at t (5 before, 5 after) to average over
-        start = int(t - 5)
-        end = int(t + 5)
+        # take 11 snapshots centered at t (5 before, 5 after) to average over
+        start = int(t - half_window)
+        end = int(t + half_window + 1)
         conf_file = savepath / f"conformations_{simstring}_t{int(t)}.npy"
         if conf_file.is_file():
             conformations = np.load(conf_file)
@@ -192,14 +227,19 @@ def contact_maps_over_time(
             conformations, runs = extract_conformations(
                 basepath, start=start, end=end, every_other=time_between_snapshots
             )
-            np.save(conf_file, conformations)
+            if save_confs:
+                np.save(conf_file, conformations)
 
         mat = contactmaps.monomerResolutionContactMap(
             filenames=conformations, cutoff=2.0
         )
         mat2 = mat / len(conformations)
         # save cutoff radius = 2.0 contact map
-        np.save(f"data/contact_map_{simstring}_cutoff2.0.npy", mat2)
+        np.save(
+            savepath
+            / f"linear_relaxation/contact_map_{simstring}_t{int(t)}_window{time_window}_snapshotDT_{time_between_snapshots}_cutoff2.0.npy",
+            mat2,
+        )
 
 
 def process_existing_simulations(simdir=None, savepath=Path("data")):

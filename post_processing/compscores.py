@@ -30,11 +30,9 @@ Deepti Kannan. 2022
 
 import numpy as np
 from cooltools.lib import numutils
-from cooltools.lib.numutils import (
-    LazyToeplitz,
-    iterative_correction_symmetric,
-    observed_over_expected,
-)
+from cooltools.lib.numutils import (LazyToeplitz,
+                                    iterative_correction_symmetric,
+                                    observed_over_expected)
 
 
 def process_data(filename, score_quantile=25, n_groups=38):
@@ -118,6 +116,105 @@ def saddle(e1, oe, n_bins):
     interaction_count += interaction_count.T
     interaction_sum += interaction_sum.T
     return interaction_sum, interaction_count
+
+
+def comp_score_1(filename, ids=None):
+    """Compute COMP score 1 from Nuebler et al. (2018) as a function of distance from diagonal.
+
+    Parameters
+    ----------
+    filename : str
+        filename where contact map is stored
+    ids : np.ndarray (N,)
+        array where 1 is type A and 0 is type B
+
+    Returns
+    -------
+    cs1 : np.ndarray[float] (N-1, )
+        mean of A and B compartment scores as a function of distance from diagonal
+    A_cs1 : np.ndarray[float] (N-1, )
+        A compartment score as a function of distance from diagonal
+    B_cs1 : np.ndarray[float] (N-1, )
+        B compartment score as a function of distance from diagonal
+
+    """
+    if ids is None:
+        ids = np.load(
+            "/net/levsha/share/deepti/data/ABidentities_chr21_Su2020_2perlocus.npy"
+        )
+    N = len(ids)
+    monomer_ids = np.zeros((N,), dtype=int)
+    monomer_ids[ids == 0] = 1  # type B(cold)
+    monomer_ids[ids == 1] = -2  # type A (hot)
+    ABidentities = np.outer(monomer_ids, monomer_ids)
+    if isinstance(filename, str):
+        contactmap = np.load(filename)
+    else:
+        contactmap = filename
+    N = contactmap.shape[0]
+    s = np.arange(1, N)
+    contacts_within_A = np.zeros(N - 1)
+    pairs_within_A = np.zeros(N - 1)
+    contacts_within_B = np.zeros(N - 1)
+    pairs_within_B = np.zeros(N - 1)
+    pairs_across_comp = np.zeros(N - 1)
+    contacts_across_comp = np.zeros(N - 1)
+
+    for i, k in enumerate(s):
+        diag_map = np.diag(contactmap, k)
+        diag_AB = np.diag(ABidentities, k)
+        contacts_within_A[i] = np.sum(diag_map[diag_AB == 4])
+        pairs_within_A[i] = np.sum(diag_AB == 4)
+        contacts_within_B[i] = np.sum(diag_map[diag_AB == 1])
+        pairs_within_B[i] = np.sum(diag_AB == 1)
+        contacts_across_comp[i] = np.sum(diag_map[diag_AB < 0])
+        pairs_across_comp[i] = np.sum(diag_AB < 0)
+
+    # Avoid division by zero and generate NaN if necessary
+    av_withinA_s = np.divide(
+        contacts_within_A,
+        pairs_within_A,
+        out=np.full_like(contacts_within_A, np.nan),
+        where=(pairs_within_A != 0),
+    )
+    av_withinB_s = np.divide(
+        contacts_within_B,
+        pairs_within_B,
+        out=np.full_like(contacts_within_B, np.nan),
+        where=(pairs_within_B != 0),
+    )
+    av_across_s = np.divide(
+        contacts_across_comp,
+        pairs_across_comp,
+        out=np.full_like(contacts_across_comp, np.nan),
+        where=(pairs_across_comp != 0),
+    )
+    av_within_s = np.divide(
+        contacts_within_A + contacts_within_B,
+        pairs_within_A + pairs_within_B,
+        out=np.full_like(contacts_within_B, np.nan),
+        where=((pairs_within_A + pairs_within_B) != 0),
+    )
+
+    COMPscore1 = np.divide(
+        av_within_s - av_across_s,
+        av_within_s + av_across_s,
+        out=np.full_like(av_within_s, np.nan),
+        where=((av_within_s + av_across_s) != 0),
+    )
+    COMPscore1_A = np.divide(
+        av_withinA_s - av_across_s,
+        av_withinA_s + av_across_s,
+        out=np.full_like(av_within_s, np.nan),
+        where=((av_withinA_s + av_across_s) != 0),
+    )
+    COMPscore1_B = np.divide(
+        av_withinB_s - av_across_s,
+        av_withinB_s + av_across_s,
+        out=np.full_like(av_within_s, np.nan),
+        where=((av_withinB_s + av_across_s) != 0),
+    )
+    return COMPscore1, COMPscore1_A, COMPscore1_B
 
 
 def comp_score_2(S, C, quantile):
