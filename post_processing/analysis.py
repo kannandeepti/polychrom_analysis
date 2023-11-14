@@ -33,7 +33,7 @@ from polychrom.hdf5_format import list_URIs, load_URI
 from scipy.spatial.distance import pdist, squareform
 
 
-def extract(path, start=100000, every_other=10000, end=200000):
+def extract(path, start=10000, every_other=100, end=20000):
     """Extract independent snapshots from a single simulation.
 
     Parameters

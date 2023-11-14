@@ -159,7 +159,7 @@ def compute_single_trajectory_msd(
 def compute_single_trajectory_Rg2(
     simdir, start=100000, every_other=1, end=None, N=None
 ):
-    """Compute MSDs for all N monomers over time using `ever_other` conformations
+    """Compute squared radius of gyration over time using `ever_other` conformations
     starting at time point `start` from a single simulation in `simdir`.
 
     Parameters
@@ -175,8 +175,8 @@ def compute_single_trajectory_Rg2(
 
     Returns
     -------
-    dxs : (n_timesteps, N)
-        MSDs (columns) over time (rows) of each of the N monomers
+    Rgs : (n_timesteps,)
+        Radius of gyration over time
 
     """
 
