@@ -129,12 +129,11 @@ def compute_single_trajectory_msd(
         starting_pos = load_hdf5_file(simdir / "starting_conformation_0.h5")["pos"]
     else:
         starting_pos = load_URI(data[start])["pos"]
-    ncopies = int(starting_pos.shape[0] / N)
-    print(ncopies)
     if N is None:
         # N is number of monomers. Defaults to dimension of pos
         # should be set to length of subchain if there are subchains
         N = len(starting_pos)
+    ncopies = int(starting_pos.shape[0] / N)
     if end is None:
         end = len(data)
     dxs = []
@@ -151,8 +150,6 @@ def compute_single_trajectory_msd(
         # shape (ncopies, N)
         dxs.append(np.array(ens_ave_msd).mean(axis=0))
     dxs = np.array(dxs)
-    print(simdir)
-    print(dxs[0])
     return dxs
 
 
@@ -175,8 +172,8 @@ def compute_single_trajectory_Rg2(
 
     Returns
     -------
-    dxs : (n_timesteps, N)
-        MSDs (columns) over time (rows) of each of the N monomers
+    Rgs_squared : (n_timesteps,)
+        squared radius of gyration of polymer over time (averaged over subchains)
 
     """
 
