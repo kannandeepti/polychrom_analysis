@@ -77,7 +77,10 @@ def visualize(X, nchains, mapN=None, ids=None, chrom=None, color_by="monomer_id"
     if mapN is None:
         mapN = len(monomer_names)
     # copy the list nchains times
-    all_monomer_names = monomer_names * nchains
+    try : 
+        all_monomer_names = monomer_names * nchains
+    except:
+        raise TypeError("nchains must be an integer")
     chrom_names = get_chrom_names(nchains, mapN)
     # total N = number of monomers in one subchain * nchains
     totalN = nchains * mapN
