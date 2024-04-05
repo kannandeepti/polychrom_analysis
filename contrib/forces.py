@@ -9,6 +9,7 @@ Should be used in combination with contrib.initialize_chains.
 
 try:
     import openmm
+    import simtk
 except Exception:
     import simtk.openmm as openmm
 
@@ -66,5 +67,68 @@ def spherical_well_array(
     for i in particles:
         # NOTE: the explicit type cast seems to be necessary if we have an np.array...
         force.addParticle(int(i), [])
+
+    return force
+
+def spherical_confinement_array(
+    sim_object,
+    r,
+    cell_size, # set to 5*r_chain, or 5*r
+    k=5.0,  # How steep the walls are
+    invert=False,
+    particles=None,
+    name="spherical_confinement_array",
+):
+    """Constrain particles to be within a sphere.
+    With no parameters creates sphere with density .3
+    Parameters
+    ----------
+    r : float 
+        Radius of confining sphere. *Equal to r_chain
+    k : float, optional
+        Steepness of the confining potential, in kT/nm
+    density : float, optional, <1
+        Density for autodetection of confining radius.
+        Density is calculated in particles per nm^3,
+        i.e. at density 1 each sphere has a 1x1x1 cube.
+    center : [float, float, float]
+        The coordinates of the center of the sphere.
+    invert : bool
+        If True, particles are not confinded, but *excluded* from the sphere.
+    particles : list of int
+        The list of particles affected by the force.
+        If None, apply the force to all particles.
+    """
+
+    force = openmm.CustomExternalForce(
+        "step(invert_sign*(rad-aa)) * kb * (sqrt((rad-aa)*(rad-aa) + t*t) - t); " 
+        "rad = sqrt((x1-x0)^2 + (y1-y0)^2 + (z1-z0)^2 + tt^2);"
+        "x1 = x - L*floor(abs(x + rs)/L);" 
+        "y1 = y - L*floor(abs(y + rs)/L);"
+        "z1 = z - L*floor(abs(z + rs)/L);"
+    )
+    force.name = name
+
+    particles = range(sim_object.N) if particles is None else particles # N is passed down as N*ncopies
+    center = 3 * [0.0] 
+    for i in particles:
+        force.addParticle(int(i), [])
+
+    if sim_object.verbose:
+        print("Spherical confinement with radius = %lf" % r)
+    # assigning parameters of the force
+    force.addGlobalParameter("kb", k * sim_object.kT / simtk.unit.nanometer)
+    force.addGlobalParameter("aa", (r - 1.0 / k) * simtk.unit.nanometer)
+    force.addGlobalParameter("t", (1.0 / k) * simtk.unit.nanometer / 10.0)
+    force.addGlobalParameter("tt", 0.01 * simtk.unit.nanometer)
+    force.addGlobalParameter("invert_sign", (-1) if invert else 1) # 1
+    force.addGlobalParameter("rs", r * 2 * sim_object.conlen)
+    force.addGlobalParameter("L", cell_size * sim_object.conlen)
+    force.addGlobalParameter("x0", center[0] * simtk.unit.nanometer)
+    force.addGlobalParameter("y0", center[1] * simtk.unit.nanometer)
+    force.addGlobalParameter("z0", center[2] * simtk.unit.nanometer)
+
+    # TODO: move 'r' elsewhere?..
+    sim_object.sphericalConfinementRadius = r
 
     return force
