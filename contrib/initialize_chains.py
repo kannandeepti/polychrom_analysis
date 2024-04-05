@@ -75,8 +75,8 @@ def initialize_territories(volume_fraction, mapN, nchains, lattice="hcp", rs=Non
         initial x,y,z positions of all monomers
 
     """
-    r_chain = ((mapN * (0.5) ** 3) / volume_fraction) ** (1 / 3)
-    r_confinement = ((nchains * mapN * (0.5) ** 3) / volume_fraction) ** (1 / 3)
+    r_chain = ((mapN * (0.5) ** 3) / volume_fraction) ** (1 / 3) 
+    r_confinement = ((nchains * mapN * (0.5) ** 3) / volume_fraction) ** (1 / 3) 
     print(r_chain)
     print(r_confinement)
     # first calculate centroid positions of chains
@@ -89,7 +89,7 @@ def initialize_territories(volume_fraction, mapN, nchains, lattice="hcp", rs=Non
         df = square_lattice(lattice_size)
     else:
         raise ValueError("only hcp and square lattices implemented so far")
-    df["radial_distance"] = np.sqrt(df["x"] ** 2 + df["y"] ** 2 + df["z"] ** 2)
+    df["radial_distance"] = np.sqrt(df["x"] ** 2 + df["y"] ** 2 + df["z"] ** 2) 
     df.sort_values("radial_distance", inplace=True)
     positions = df.to_numpy()[:, :3][:nchains]
     if rs is None:
@@ -102,7 +102,6 @@ def initialize_territories(volume_fraction, mapN, nchains, lattice="hcp", rs=Non
     else:
         # rs is the desired cell size of each square in lattice
         positions *= rs
-        # now set radius of sphere to be that of individual chain
         rs = r_chain
     starting_conf = []
     for i in range(nchains):
