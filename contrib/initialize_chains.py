@@ -102,6 +102,7 @@ def initialize_territories(volume_fraction, mapN, nchains, lattice="hcp", rs=Non
     else:
         # rs is the desired cell size of each square in lattice
         positions *= rs
+        # now set radius of sphere to be that of individual chain
         rs = r_chain
     starting_conf = []
     for i in range(nchains):

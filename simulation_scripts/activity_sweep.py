@@ -22,7 +22,7 @@ sys.path.append(os.getcwd())
 import numpy as np
 from polychrom import forcekits, forces, simulation, starting_conformations
 from polychrom.hdf5_format import HDF5Reporter
-from simtk import unit
+from simtk import unitgit 
 
 from contrib.integrators import ActiveBrownianIntegrator
 
@@ -151,6 +151,6 @@ if __name__ == "__main__":
     acts_per_task = act_values[my_task_id : len(act_values) : num_tasks] # 1:10:5
     print(acts_per_task)
     for activity_ratio in acts_per_task:
-        for i in range(200):
+        for i in range(20):
             print(f"Running simulation with activity ratio: {activity_ratio}")
             run_monomer_diffusion(i, 0, N, ids, activity_ratio)

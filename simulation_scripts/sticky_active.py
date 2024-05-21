@@ -135,16 +135,9 @@ def run_sticky_sim(
         )
     elif confine == "single":
         polymer = starting_conformations.grow_cubic(N * ncopies, 2 * int(np.ceil(r)))
-    #sim.set_data(polymer, center=True)  # loads a polymer, puts a center of mass at zero
-    sim.set_data(polymer, center=False, random_offset = 0.0) # MODIFIED HERE, set to False
-    polymer2 = sim.get_data()
+    sim.set_data(polymer, center=False, random_offset = 0.0)
     L = 5*r_chain
-    polymer3 = polymer2.copy()
-    for i in range(3):
-        polymer3[:, i] -= L*np.floor(polymer3[:,i]/L)
-    compare_com(polymer3, polymer2, ncopies)
     
-    #assert(np.all(polymer == polymer2))
     sim.set_velocities(
         v=np.zeros((N * ncopies, 3))
     )  # initializes velocities of all monomers to zero (no inertia)
@@ -230,7 +223,7 @@ def log_time_stepping(sim, ntimepoints=100, mint=50, maxt=10000 * 2000):
         if block >= 1:
             sim.do_block(block)
             
-def clustered_log_time_stepping(sim, ntimepoints=100, mint=100, maxt=10000*2000):
+def clustered_log_time_stepping(sim, ntimepoints=100, mint=100, maxt=10000*4000):
     """Save data at time points that are log-spaced between t-mint and t=maxt, and
     further save data at ten linear points in the vicinity of these log-spaced points."""
     timepoints = np.rint(np.logspace(np.log10(mint), np.log10(maxt), ntimepoints))
@@ -270,18 +263,18 @@ if __name__ == "__main__":
         for e in e0:
             param_set.append((a, e))
     
-    param_set = [(7.6, 0)] #MODIFIED HERE
     # for contour parameter setting
     select_act = [1, 2, 3, 4, 5]
-    select_e0 = [0.23, 0.15, 0.10, 0.05, 0]
+    select_e0 = [0.18, 0.115, 0.075, 0.04, 0]
     contour_param_set = list(zip(select_act, select_e0)) # modify for each chromo
     
-    acts_per_task = param_set[my_task_id : len(param_set) : num_tasks] # change contour param set if necessary
+    acts_per_task = contour_param_set[my_task_id : len(contour_param_set) : num_tasks] # change contour param set if necessary
+    acts_per_task = [(1, 0)]
     
     tic = time.time()
     sims_ran = 0
     for (act_ratio, E0) in acts_per_task:
-        ran_sim = run_sticky_sim(0, N, 20, E0, act_ratio, nblocks=2, blocksize=0, time_stepping_fn=clustered_log_time_stepping) # 200 chains, 1100 nblocks, MODIFIED HERE
+        ran_sim = run_sticky_sim(0, N, 200, E0, act_ratio, nblocks=500, blocksize=200, time_stepping_fn=None) # 200 chains, 1100 nblocks, MODIFIED HERE
         print((act_ratio, E0))
         if ran_sim:
             sims_ran += 1
