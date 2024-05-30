@@ -23,19 +23,9 @@ from scipy.spatial.distance import pdist
 from simtk import unit
 
 from contrib.forces import spherical_well_array
+from contrib.forces import spherical_confinement_array
 from contrib.initialize_chains import initialize_territories
 from contrib.integrators import ActiveBrownianIntegrator
-
-# insert path to simulation directory where results should be stored
-basepath = Path("./chr21_Su2020")
-# 1 is A, 0 is B
-ABids = np.loadtxt("data/ABidentities_chr21_Su2020_2perlocus.csv", dtype=str)
-ids = (ABids == "A").astype(int)
-N = len(ids)
-print(f"Number of monomers: {N}")
-# 1 is B, 0 is A
-flipped_ids = (1 - ids).astype(bool)
-
 
 def run_sticky_sim(
     gpuid,
@@ -101,8 +91,8 @@ def run_sticky_sim(
     # monomer density in confinement in units of monomers/volume (25%)
     r_chain = ((N * (0.5) ** 3) / volume_fraction) ** (1 / 3)
     r = ((N * ncopies * (0.5) ** 3) / volume_fraction) ** (1 / 3)
-    print(f"Radius of confinement: {r}")
-    print(f"Radius of confined chain: {r_chain}")
+    print(f"Radius of confinement: {r}") # 25.3
+    print(f"Radius of confined chain: {r_chain}") # 9.3
     # the monomer diffusion coefficient should be in units of kT / friction, where friction = mass*collision_rate
     collision_rate = 2.0
     mass = 100 * unit.amu
@@ -120,7 +110,8 @@ def run_sticky_sim(
     try:
         Path(traj).mkdir(parents=True, exist_ok=False)
     except FileExistsError:
-        print(f"E0={E0}, activity ratio={act_ratio} already exists")
+        print(f"E0={E0}, activity ratio={act_ratio}")
+        print(f"{traj}")
         return ran_sim
 
     reporter = HDF5Reporter(folder=traj, max_data_length=100, overwrite=True)
@@ -144,7 +135,9 @@ def run_sticky_sim(
         )
     elif confine == "single":
         polymer = starting_conformations.grow_cubic(N * ncopies, 2 * int(np.ceil(r)))
-    sim.set_data(polymer, center=True)  # loads a polymer, puts a center of mass at zero
+    sim.set_data(polymer, center=False, random_offset = 0.0)
+    L = 5*r_chain
+    
     sim.set_velocities(
         v=np.zeros((N * ncopies, 3))
     )  # initializes velocities of all monomers to zero (no inertia)
@@ -161,8 +154,8 @@ def run_sticky_sim(
         sim.add_force(forces.spherical_confinement(sim, r=r, k=5.0))
     elif confine == "many":
         sim.add_force(
-            spherical_well_array(
-                sim, cell_size=5 * r_chain, r=width + r_chain, width=width, depth=depth
+            spherical_confinement_array(
+                sim, cell_size=5 * r_chain, r=r_chain
             )
         )
 
@@ -184,6 +177,7 @@ def run_sticky_sim(
     )
     tic = time.perf_counter()
     if time_stepping_fn:
+        print("timestep_FN")
         time_stepping_fn(sim)
     else:
         for _ in range(nblocks):  # Do 10 blocks
@@ -197,6 +191,16 @@ def run_sticky_sim(
     ran_sim = True
     return ran_sim
 
+def compare_com(array1, array2, ncopies):
+    N1, _ = np.shape(array1)
+    N2, _ = np.shape(array2)
+    assert(N1 == N2)
+    mapN = int(N1 / ncopies)
+    for i in range(ncopies):
+        pos_test1 = np.mean(array1[i*mapN : (i+1)*mapN], axis=0)
+        pos_test2 = np.mean(array2[i*mapN : (i+1)*mapN], axis=0)
+        print(f"first array COM: {pos_test1}")
+        print(f"second array COM: {pos_test2}")
 
 def short_time_dynamics(
     sim, stop1=2000 * 2000, block1=50, stop2=10000 * 2000, block2=5000
@@ -218,45 +222,60 @@ def log_time_stepping(sim, ntimepoints=100, mint=50, maxt=10000 * 2000):
     for block in blocks:
         if block >= 1:
             sim.do_block(block)
-
+            
+def clustered_log_time_stepping(sim, ntimepoints=100, mint=100, maxt=10000*4000):
+    """Save data at time points that are log-spaced between t-mint and t=maxt, and
+    further save data at ten linear points in the vicinity of these log-spaced points."""
+    timepoints = np.rint(np.logspace(np.log10(mint), np.log10(maxt), ntimepoints))
+    timepoints = list(timepoints.astype(int))
+    prev_time = mint-15
+    new_timepoints = []
+    for i in range(len(timepoints)):
+        time_diff = timepoints[i] - prev_time
+        rounded_step = round(time_diff/12)
+        if (rounded_step > 1000):
+            rounded_step = 1000
+        ith_window = [timepoints[i] - 5*rounded_step, timepoints[i] - 4*rounded_step, timepoints[i] - 3*rounded_step, timepoints[i] - 2*rounded_step, timepoints[i] - rounded_step, timepoints[i], timepoints[i] + rounded_step, timepoints[i] + 2*rounded_step,
+                      timepoints[i] + 3*rounded_step, timepoints[i] + 4*rounded_step, timepoints[i] + 5*rounded_step]
+        new_timepoints.extend(ith_window)
+        prev_time = timepoints[i]
+    blocks = np.concatenate(([new_timepoints[0]], np.diff(new_timepoints))).astype(int)
+    for block in blocks:
+        if block >= 1:
+            sim.do_block(block)
 
 if __name__ == "__main__":
-    gpuid = int(sys.argv[1])
-    # range of models with cs1 = 1.0
-    param_set_1 = [
-        (1, 0.5),
-        (3, 0.5),
-        (5, 0.5),
-        (7, 0.5),
-        (8, 0.5),
-        (9, 0.5),
-        (10, 0.5),
-    ]
-    # range of models with cs1 = 0.6
-    param_set_2 = [(1, 0.25), (2, 0.15), (3, 0.1), (4, 0.05), (5, 0.0)]
-    acts_only = [
-        (2, 0.0),
-        (3, 0.0),
-        (4, 0.0),
-        (5, 0.0),
-        (7, 0.0),
-        (8, 0.0),
-        (9, 0.0),
-        (10, 0.0),
-    ]
-    E0_only = [(1, 0.15), (1, 0.1), (1, 0.05)]
+    my_task_id = int(sys.argv[1]) - 1
+    num_tasks = int(sys.argv[2])
+    # 1 is A, 0 is B
+    ABids = np.loadtxt(sys.argv[3], dtype=str)
+    ids = (ABids == "A").astype(int)
+    flipped_ids = (1 - ids).astype(bool)
+    N = len(ids)
+    print(f"Number of monomers: {N}")
+    basepath = Path(sys.argv[4])
+    
+    # for parameter sweeps
+    param_set = []
+    act_ratio = [1, 2, 3, 4, 5]
+    e0 = [0, 0.075, 0.15, 0.225, 0.3]
+    for a in act_ratio:
+        for e in e0:
+            param_set.append((a, e))
+    
+    # for contour parameter setting
+    select_act = [1, 2, 3, 4, 5]
+    select_e0 = [0.18, 0.115, 0.075, 0.04, 0]
+    contour_param_set = list(zip(select_act, select_e0)) # modify for each chromo
+    
+    acts_per_task = contour_param_set[my_task_id : len(contour_param_set) : num_tasks] # change contour param set if necessary
+    acts_per_task = [(1, 0)]
+    
     tic = time.time()
     sims_ran = 0
-    all_params = param_set_1 + param_set_2 + acts_only + E0_only
-    test_params = [(1, 0.0), (2, 0.4)]
-    # print(all_params)
-    # for the sensitive region of parameter space, run simulations with 200 chains
-    # for act_ratio in [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]:
-    #    for E0 in [0.0, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2]:
-    for (E0, act_ratio) in test_params:
-        ran_sim = run_sticky_sim(
-            gpuid, N, 20, E0, act_ratio, nblocks=1000, blocksize=100
-        )
+    for (act_ratio, E0) in acts_per_task:
+        ran_sim = run_sticky_sim(0, N, 200, E0, act_ratio, nblocks=500, blocksize=200, time_stepping_fn=None) # 200 chains, 1100 nblocks, MODIFIED HERE
+        print((act_ratio, E0))
         if ran_sim:
             sims_ran += 1
     toc = time.time()

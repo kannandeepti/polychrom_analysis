@@ -9,6 +9,7 @@ Should be used in combination with contrib.initialize_chains.
 
 try:
     import openmm
+    import simtk
 except Exception:
     import simtk.openmm as openmm
 
@@ -101,16 +102,16 @@ def spherical_confinement_array(
     """
 
     force = openmm.CustomExternalForce(
-        "step(invert_sign*(r-aa)) * kb * (sqrt((r-aa)*(r-aa) + t*t) - t); "
-        "r = sqrt((x1-x0)^2 + (y1-y0)^2 + (z1-z0)^2 + tt^2);"
-        "x1 = x - L*floor(x/L);"
-        "y1 = y - L*floor(y/L);"
-        "z1 = z - L*floor(z/L);"
+        "step(invert_sign*(rad-aa)) * kb * (sqrt((rad-aa)*(rad-aa) + t*t) - t); " 
+        "rad = sqrt((x1-x0)^2 + (y1-y0)^2 + (z1-z0)^2 + tt^2);"
+        "x1 = x - L*floor(abs(x + rs)/L);" 
+        "y1 = y - L*floor(abs(y + rs)/L);"
+        "z1 = z - L*floor(abs(z + rs)/L);"
     )
     force.name = name
 
-    particles = range(sim_object.N) if particles is None else particles
-    center = 3 * [cell_size / 2]
+    particles = range(sim_object.N) if particles is None else particles # N is passed down as N*ncopies
+    center = 3 * [0.0] 
     for i in particles:
         force.addParticle(int(i), [])
 
@@ -121,7 +122,8 @@ def spherical_confinement_array(
     force.addGlobalParameter("aa", (r - 1.0 / k) * simtk.unit.nanometer)
     force.addGlobalParameter("t", (1.0 / k) * simtk.unit.nanometer / 10.0)
     force.addGlobalParameter("tt", 0.01 * simtk.unit.nanometer)
-    force.addGlobalParameter("invert_sign", (-1) if invert else 1)
+    force.addGlobalParameter("invert_sign", (-1) if invert else 1) 
+    force.addGlobalParameter("rs", r * 2 * sim_object.conlen)
     force.addGlobalParameter("L", cell_size * sim_object.conlen)
     force.addGlobalParameter("x0", center[0] * simtk.unit.nanometer)
     force.addGlobalParameter("y0", center[1] * simtk.unit.nanometer)

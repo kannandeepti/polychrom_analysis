@@ -57,6 +57,7 @@ def extract_hot_cold(simdir, D, start=100000, every_other=10):
         for i in range(ncopies):
             posN = pos[N * i : N * (i + 1)]
             X.append(posN)
+
     X = np.array(X)
     Xcold = X[:, D == D.min(), :]
     Xhot = X[:, D == D.max(), :]
@@ -129,6 +130,7 @@ def compute_single_trajectory_msd(
         starting_pos = load_hdf5_file(simdir / "starting_conformation_0.h5")["pos"]
     else:
         starting_pos = load_URI(data[start])["pos"]
+        
     ncopies = int(starting_pos.shape[0] / N)
     print(ncopies)
     if N is None:
@@ -151,8 +153,6 @@ def compute_single_trajectory_msd(
         # shape (ncopies, N)
         dxs.append(np.array(ens_ave_msd).mean(axis=0))
     dxs = np.array(dxs)
-    print(simdir)
-    print(dxs[0])
     return dxs
 
 
@@ -227,9 +227,7 @@ def save_MSD_ensemble_ave(basepath, savefile, ids=None, every_other=1, ncores=25
     """
     # 0 is cold (B) and 1 is hot (A)
     if ids is None:
-        ABids = np.loadtxt(
-            "data/ABidentities_Zhang_Blobel2021_chr2_35Mb_60Mb.csv", dtype=str
-        )
+        ABids = np.loadtxt("data/ABidentities_chr21_Su2020_2perlocus.csv", dtype=str)
         ids = (ABids == "A").astype(int)
     assert np.all(np.logical_or(ids == 0, ids == 1))
     basepath = Path(basepath)
@@ -248,7 +246,7 @@ def save_MSD_ensemble_ave(basepath, savefile, ids=None, every_other=1, ncores=25
     df.to_csv(savefile, index=False)
 
 
-def save_MSD_time_ave(simpath, D, savepath, every_other=10):
+def save_MSD_time_ave(simpath, D, savepath, every_other=500):
     """Compute time lag averaged MSDs averaged over active and inactive regions
     from a single simulation trajectory in simpath. Takes ~30 min for a simulation with
     10,000 conformations.
@@ -264,12 +262,13 @@ def save_MSD_time_ave(simpath, D, savepath, every_other=10):
     every_other : int
         skip every_other conformation when loading conformations for MSD computation
     """
-    Xhot, Xcold = extract_hot_cold(
-        Path(simpath), D, start=100000, every_other=every_other
-    )
-    hot_msd, cold_msd = get_bead_msd_time_ave(Xhot, Xcold)
-    df_msd = pd.DataFrame()
-    df_msd["Times"] = np.arange(0, len(hot_msd)) * every_other
-    df_msd["MSD_A"] = hot_msd
-    df_msd["MSD_B"] = cold_msd
-    df_msd.to_csv(savepath)
+    if not Path(savepath).exists():
+        Xhot, Xcold = extract_hot_cold(
+            Path(simpath), D, start=100000, every_other=every_other
+        )
+        hot_msd, cold_msd = get_bead_msd_time_ave(Xhot, Xcold)
+        df_msd = pd.DataFrame()
+        df_msd["Times"] = np.arange(0, len(hot_msd)) * every_other
+        df_msd["MSD_A"] = hot_msd
+        df_msd["MSD_B"] = cold_msd
+        df_msd.to_csv(savepath)

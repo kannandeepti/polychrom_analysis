@@ -15,25 +15,25 @@ al. (2021). All other parameters are hard-coded and match Goychuk et al. (2023).
 
 import os
 import sys
-import time
+import timeq
 
 sys.path.append(os.getcwd())
 
 import numpy as np
 from polychrom import forcekits, forces, simulation, starting_conformations
 from polychrom.hdf5_format import HDF5Reporter
-from simtk import unit
+from simtk import unitgit 
 
 from contrib.integrators import ActiveBrownianIntegrator
 
 # 1 is A, 0 is B
-ABids = np.loadtxt("data/ABidentities_Zhang_Blobel2021_chr2_35Mb_60Mb.csv", dtype=str)
+ABids = np.loadtxt("data/ABidentities_chr21_Su2020_2perlocus.csv", dtype=str)
 ids = (ABids == "A").astype(int)
 N = len(ids)
 
 
-def run_monomer_diffusion(
-    gpuid, N, ids, activity_ratio, timestep=170, nblocks=10, blocksize=100
+def run_monomer_diffusion(replicate,
+    gpuid, N, ids, activity_ratio, timestep=170, nblocks=1000000, blocksize=100
 ):
     """Run a single simulation on a GPU of a hetero-polymer with A monomers and B monomers. A monomers
     have a larger diffusion coefficient than B monomers, with an activity ratio of D_A / D_B.
@@ -85,8 +85,8 @@ def run_monomer_diffusion(
     integrator = ActiveBrownianIntegrator(timestep, collision_rate, particleD)
     gpuid = f"{gpuid}"
     reporter = HDF5Reporter(
-        folder=f"act_ratio_{activity_ratio}",
-        max_data_length=100,
+        folder=f"act_ratio_{activity_ratio}/run{replicate}",
+        max_data_length=1000,
         overwrite=True,
     )
     sim = simulation.Simulation(
@@ -144,12 +144,13 @@ if __name__ == "__main__":
     num_tasks = int(sys.argv[2])
 
     # parameters to sweep
-    act_values = np.arange(1.0, 7.0, 1.0)
+    act_values = np.arange(0.5, 3.0, 0.5)
     print(act_values)
 
     # batch to process with this task
-    acts_per_task = act_values[my_task_id : len(act_values) : num_tasks]
+    acts_per_task = act_values[my_task_id : len(act_values) : num_tasks] # 1:10:5
     print(acts_per_task)
     for activity_ratio in acts_per_task:
-        print(f"Running simulation with activity ratio: {activity_ratio}")
-        run_monomer_diffusion(0, N, ids, activity_ratio)
+        for i in range(20):
+            print(f"Running simulation with activity ratio: {activity_ratio}")
+            run_monomer_diffusion(i, 0, N, ids, activity_ratio)
